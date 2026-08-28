@@ -9,8 +9,22 @@ dist/
 *.pt
 *.pth
 runs/
-experiments/**/checkpoints/
-checkpoints/*
-!checkpoints/.gitkeep
 .venv/
 venv/
+
+# Experiment outputs: keep small text/plot artifacts, drop logs & checkpoints.
+experiments/**
+!experiments/.gitkeep
+!experiments/**/
+!experiments/**/report.md
+!experiments/**/summary.md
+!experiments/**/results.json
+!experiments/**/metrics.jsonl
+!experiments/**/resolved_config.yaml
+!experiments/**/run_config.yaml
+!experiments/**/metadata.json
+!experiments/**/*.png
+experiments/**/*.log
+experiments/_*.log
+checkpoints/*
+!checkpoints/.gitkeep
