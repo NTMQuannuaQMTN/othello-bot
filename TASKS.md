@@ -86,22 +86,22 @@ pass, and the full suite is green.
 
 ## Phase 7 — Self-play
 
-- [ ] `rl/self_play.py` — opponent pool, configurable sampling
-- [ ] Checkpoint pool management
-- [ ] Anti-forgetting eval vs historical checkpoints
-- [ ] Tests: pool sampling distribution, snapshot/restore
+- [x] `rl/self_play.py` — opponent pool, configurable sampling
+- [x] Checkpoint pool management
+- [x] Anti-forgetting eval vs historical checkpoints
+- [x] Tests: pool sampling distribution, snapshot/restore
 
 ## Phase 8 — Evaluation & experiment tracking
 
-- [ ] Standard eval protocol vs Random/Greedy/Heuristic/Minimax/historical
-- [ ] `utils/logging.py` metric logger (JSONL + CSV)
-- [ ] Plots: games vs win-rate, iterations vs baseline perf, checkpoint vs Elo
-- [ ] Experiment metadata capture
+- [x] Standard eval protocol vs Random/Greedy/Heuristic/Minimax/historical
+- [x] `utils/logging.py` metric logger (JSONL + CSV)
+- [x] Plots: games vs win-rate, iterations vs baseline perf, checkpoint vs Elo
+- [x] Experiment metadata capture
 
 ## Phase 9 — Human play interface
 
-- [ ] `scripts/play.py` terminal UI
+- [x] `scripts/play.py` terminal UI
 
 ## Future — AlphaZero-inspired
 
-- [ ] Policy+Value net, MCTS, visit-count targets, iterative self-play, eval gating
+- [x] Policy+Value net, MCTS, visit-count targets, iterative self-play, eval gating

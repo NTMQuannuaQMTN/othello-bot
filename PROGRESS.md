@@ -3,60 +3,56 @@
 _Last updated: 2026-08-28_
 
 ## Current phase
-Phase 6 — Training vs fixed opponents (curriculum).
+Phase 6 — running the tuned DQN curriculum and documenting results.
+(Phases 7–9 code + tests complete; empirical self-play run still pending.)
 
 ## Current task
-Write `scripts/train.py` + `configs/train.yaml`; run Stage 1 (vs Random) and
-verify a reproducible win-rate gain over an untrained network.
+A full 3-stage curriculum run is executing in the background
+(`experiments/20260828-201918_dqn_curriculum/`, ~380k env steps). When it
+finishes: run `scripts/track.py` on its checkpoints, record win-rate/Elo curves,
+verify the "beats Random reproducibly" criterion, then do a self-play run.
 
 ## Completed tasks
-- Phase 0: scaffolding, docs, deps.
-- Phase 1: Othello engine + 31 tests (captures, illegal, pass, termination, fuzz).
-  Move generation later switched to a fast short-circuiting scalar path
-  (`rules._has_bracket` over `board.tolist()`); a numpy `legal_move_mask` exists
-  and is cross-checked against the scalar reference.
-- Phase 2: RandomAgent, GreedyAgent, HeuristicAgent (configurable weighted eval),
-  MinimaxAgent (negamax + alpha-beta + static move ordering, pass-aware). 18 tests.
-- Phase 3: `evaluation/` — tournament (`play_game`/`play_match`/`round_robin` with
-  reproducible per-game seeds and random opening plies to diversify deterministic
-  matchups), metrics (Wilson CI), internal Elo (`EloModel`, clearly labelled
-  "internal"), JSON+markdown+PNG report, `scripts/evaluate.py`,
-  `configs/evaluation.yaml`. Tests for all.
-- Phase 4: `environment/environment.py` `OthelloEnv` — canonical (3,8,8) obs,
-  length-65 action mask (64 = pass), sparse ±1 reward from mover's perspective,
-  `illegal_move_mode` raise/loss. 9 tests.
-- Phase 5: `docs/rl-algorithm.md` (justifies masked Double-DQN). `rl/network.py`
-  (`SmallOthelloNet`, conv torso + Q head + optional value head, `masked_q`),
-  `rl/replay_buffer.py` (uniform replay storing next-state masks), `rl/agent.py`
-  (`DQNAgent`: masked eps-greedy + greedy eval, implements baseline `Agent`,
-  checkpoint save/load/from_checkpoint, `clone_network`), `rl/opponents.py`
-  (`FixedOpponentEnv` -> stationary single-agent MDP), `rl/trainer.py`
-  (`DQNTrainer`: Double-DQN, target sync, Huber loss, eps schedule, metrics,
-  optional periodic eval hook). 16 RL tests incl. trainer smoke + checkpoint.
+- Phase 0–5: see git history. Engine + baselines + evaluation framework + RL env
+  + masked Double-DQN, all tested.
+- Phase 3 baseline eval (real run, `experiments/20260828-194501_eval/`): sensible
+  Elo ordering minimax4 2372 > minimax3 1804 > minimax2 1597 > heuristic 1445 >
+  greedy 937 > random 846; heuristic beats random 0.96, minimax2 beats heuristic
+  0.78, minimax4 beats heuristic 1.00.
+- Phase 6 code: `rl/curriculum.py`, `scripts/train.py`, `configs/train.yaml`;
+  untrained-baseline anchor eval, periodic eval + checkpoint + JSONL metrics,
+  win-rate/return plots, `summary.md`.
+  - Stage-1 sanity run (60k steps, small net): win rate vs Random 0.51 → 0.66,
+    vs Greedy 0.43 → 0.64 (noisy). Added opening randomisation to training to
+    align with the opening-randomised eval; tuned hyperparameters; larger run
+    in progress.
+- Phase 7 code: `rl/self_play.py` — `OpponentPool` (baseline / historical /
+  recent, configurable distribution), `run_self_play` with snapshotting +
+  anti-forgetting eval vs historical snapshots. Tested (smoke + unit).
+- Phase 8 code: `evaluation/tracking.py` + `scripts/track.py` — per-checkpoint
+  win rate vs baselines, round-robin internal Elo, win-rate/Elo-vs-step plots,
+  `tracking.md/json`. `utils/logging.py` (JSONL+CSV), `utils/experiment.py`
+  (git commit + versions metadata). Tested.
+- Phase 9: `scripts/play.py` terminal UI (choose colour, baseline or checkpoint
+  opponent, shows board + legal moves). Smoke-tested.
 
 ## Test status
-`python3 -m pytest` -> 94 passed (~21s).
-
-## Latest baseline evaluation (experiments/, seed 20260828, 150 games/matchup,
-   opening_plies=4)
-A previous run (no opening randomisation) gave:
-  greedy>random 0.58 · heuristic>random 0.94 · heuristic>greedy 1.00 ·
-  minimax2~heuristic 0.50 · minimax3/4>heuristic 1.00 · minimax3>greedy 1.00.
-  Internal Elo: minimax3 2477, minimax4 2469, minimax2 1323, heuristic 1301,
-  random 793, greedy 637.
-A refreshed run with opening_plies=4 is in progress; see experiments/<ts>_eval/.
+`python3 -m pytest` → 110 passed (~35–40 s; slower while training runs).
 
 ## Latest training result
-None yet — Phase 6 next.
+Stage-1 sanity (see above). Full curriculum run in progress — results pending.
 
 ## Known issues
-- Python 3.9.6 only; deps `--user`. Use `python3 -m pytest`.
-- Pure-Python minimax: depth 4 ~1.5 s/game. Fine for one-off evals, kept out of
-  the fast test path.
-- `greedy` internal Elo below `random`: pure max-flips greedy really is weak in
-  Othello and the baseline matchup graph is sparse; not a bug.
+- Python 3.9.6 only; deps `--user`; run `python3 -m pytest`.
+- CPU-only, pure-Python engine + conv net → ~100–120 env steps/s. Training runs
+  are minutes–hours; configs are sized accordingly.
+- DQN eval win rates are noisy at 80–100 games/eval; trends over several evals
+  are what matter, not single points.
 
 ## Next action
-Phase 6: `scripts/train.py`, `configs/train.yaml`, Stage 1 vs Random with
-periodic eval + checkpoints + win-rate plot; then Stages 2 (Random+Greedy) and 3
-(Heuristic). Document results here and under `experiments/`.
+1. Wait for the curriculum run; run `scripts/track.py --run <dir>`.
+2. Write `experiments/<dir>/RESULTS.md` with the win-rate/Elo curves and a
+   reproducibility check (rerun stage 1 with a 2nd seed).
+3. Do a `run_self_play` run from the curriculum's final checkpoint; check the
+   anti-forgetting metrics.
+4. Mark Phase 6/7 empirical tasks done in TASKS.md once documented.

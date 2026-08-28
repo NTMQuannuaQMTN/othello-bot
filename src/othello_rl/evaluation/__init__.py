@@ -10,6 +10,12 @@ from .metrics import MatchSummary, summarize_match, wilson_interval, win_rate
 from .elo import EloModel, expected_score, ratings_from_matches, update_pair
 from .report import generate_report
 from .harness import evaluate_agent, flatten_eval
+from .tracking import (
+    discover_checkpoints,
+    track_checkpoints,
+    write_tracking_plots,
+    write_tracking_report,
+)
 
 __all__ = [
     "GameResult",
@@ -28,4 +34,8 @@ __all__ = [
     "generate_report",
     "evaluate_agent",
     "flatten_eval",
+    "track_checkpoints",
+    "discover_checkpoints",
+    "write_tracking_report",
+    "write_tracking_plots",
 ]
