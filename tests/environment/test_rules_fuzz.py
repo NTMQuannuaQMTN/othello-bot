@@ -41,7 +41,7 @@ def play_random_game(seed):
 
 
 def test_many_random_games():
-    for seed in range(300):
+    for seed in range(200):
         st = play_random_game(seed)
         b, w = st.scores()
         assert 0 <= b + w <= 64

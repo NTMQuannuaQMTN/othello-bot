@@ -37,15 +37,15 @@ pass, and the full suite is green.
 
 ## Phase 2 — Baseline agents
 
-- [ ] `agents/base.py` — `Agent` interface
-- [ ] `RandomAgent`
-- [ ] `GreedyAgent` (max immediate flips, deterministic tie-break)
-- [ ] `HeuristicAgent` (configurable weights)
-- [ ] `MinimaxAgent` (alpha-beta, configurable depth)
-- [ ] Tests: all agents always return legal moves
-- [ ] Tests: agents handle pass-only states
-- [ ] Tests: deterministic agents reproducible
-- [ ] Tests: minimax picks obvious win / corner; alpha-beta value == plain minimax
+- [x] `agents/base.py` — `Agent` interface
+- [x] `RandomAgent`
+- [x] `GreedyAgent` (max immediate flips, deterministic tie-break)
+- [x] `HeuristicAgent` (configurable weights)
+- [x] `MinimaxAgent` (alpha-beta, configurable depth)
+- [x] Tests: all agents always return legal moves
+- [x] Tests: agents handle pass-only states
+- [x] Tests: deterministic agents reproducible
+- [x] Tests: minimax picks obvious win / corner; alpha-beta value == plain minimax
 
 ## Phase 3 — Baseline evaluation system
 
