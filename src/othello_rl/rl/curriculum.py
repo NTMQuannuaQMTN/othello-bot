@@ -90,9 +90,12 @@ def run_curriculum(agent: DQNAgent, cfg: CurriculumConfig, run_dir: str | Path,
                           eval_every=cfg.eval_every, log_every=max(500, cfg.eval_every // 5),
                           progress=progress)
             periodic(trainer)
+            recent_loss = [r["loss"] for r in trainer.metrics.history[-10:]
+                           if isinstance(r.get("loss"), (int, float)) and r["loss"] == r["loss"]]
             logger.log(phase="train", stage=stage.name, env_steps=trainer.env_steps,
                        train_steps=trainer.train_steps, episodes=trainer.episodes,
                        epsilon=cfg.dqn.epsilon(trainer.env_steps),
+                       loss=(sum(recent_loss) / len(recent_loss)) if recent_loss else None,
                        mean_return_100=_mean_return(trainer))
 
         trainer._sync_agent_meta()

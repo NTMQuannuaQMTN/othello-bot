@@ -46,6 +46,40 @@ def test_train_script_smoke(tmp_path):
     assert (run / "summary.md").exists()
 
 
+def test_track_script_smoke(tmp_path):
+    from othello_rl.rl.agent import DQNAgent, NetworkConfig
+    d = tmp_path / "run" / "checkpoints"
+    d.mkdir(parents=True)
+    for i in range(2):
+        a = DQNAgent(NetworkConfig(channels=8, blocks=2, hidden=16), seed=i)
+        a.meta.env_steps = i * 1000
+        a.save(d / f"step{i * 1000}.pt")
+    r = _run([str(SCRIPTS / "track.py"), "--run", str(tmp_path / "run"),
+              "--games", "6", "--rr-games", "6", "--baselines", "random"])
+    assert r.returncode == 0, r.stderr
+    assert (tmp_path / "run" / "tracking" / "tracking.md").exists()
+    assert (tmp_path / "run" / "tracking" / "elo_vs_checkpoint.png").exists()
+
+
+def test_selfplay_script_smoke(tmp_path):
+    cfg = tmp_path / "sp.yaml"
+    cfg.write_text(
+        "seed: 0\ndevice: cpu\ntag: spsmoke\ninit_checkpoint: null\n"
+        "network: {channels: 8, blocks: 2, hidden: 16}\n"
+        "dqn: {batch_size: 16, buffer_capacity: 800, warmup_steps: 40, "
+        "target_sync: 20, epsilon_decay_steps: 300}\n"
+        "self_play: {total_env_steps: 900, snapshot_every: 300, eval_every: 300, "
+        "eval_games: 6, checkpoint_every: 500, opening_plies: 2, "
+        "pool: {distribution: {baseline: 0.4, historical: 0.2, recent: 0.4}, "
+        "recent_capacity: 3, historical_every: 1}}\n"
+    )
+    r = _run([str(SCRIPTS / "selfplay.py"), "--config", str(cfg), "--out", str(tmp_path)])
+    assert r.returncode == 0, r.stderr
+    run = next(iter(tmp_path.glob("*_spsmoke")))
+    assert (run / "checkpoints" / "final.pt").exists()
+    assert (run / "metrics.jsonl").exists()
+
+
 def test_play_script_scripted_game():
     # Feed moves; game is short because we pass/へ play whatever is asked.
     # Use 'q' to quit after a couple of moves — exit code 0.
