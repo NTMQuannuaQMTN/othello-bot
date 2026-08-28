@@ -101,13 +101,31 @@ Plots: `winrate_vs_steps.png`, `train_return.png`,
 
 ## 3. Self-play with opponent pool (Phase 7)
 
-`experiments/<ts>_dqn_selfplay/` — warm-started from the curriculum `final.pt`,
-opponent pool `{baseline 0.2, historical 0.3, recent 0.5}`. `configs/selfplay.yaml`.
+`experiments/20260829-012038_dqn_selfplay/` — warm-started from the curriculum
+`final.pt`, **120 000 self-play env steps**, opponent pool
+`{baseline 0.2, historical 0.3, recent 0.5}`, snapshot every 12k steps.
+`configs/selfplay.yaml` (`--steps-scale 0.6`).
 
 ```
 python3 scripts/selfplay.py --config configs/selfplay.yaml \
     --init experiments/20260828-201918_dqn_curriculum/checkpoints/final.pt
 ```
 
-_Run in progress — results and anti-forgetting metrics (win rate vs `hist0`,
-`hist_mid`) to be filled in._
+| point | vs Random | vs Greedy | vs Heuristic | vs `hist0` (earliest snapshot) | vs `hist_mid` |
+|---|--:|--:|--:|--:|--:|
+| start (curriculum `final.pt`) | 0.895 | 0.735 | 0.18 | 0.44 | – |
+| 60k steps | 0.905 | 0.875 | 0.285 | 0.70 | – |
+| **end (120k steps)** | **0.925** | **0.895** | **0.36** | **0.86** | **0.69** |
+
+Plot: `selfplay_winrate.png`.
+
+### Reading the result
+
+- Self-play **kept improving the agent** past where the fixed-opponent curriculum
+  left it: vs Greedy 0.74 → 0.90, vs Heuristic 0.18 → 0.36.
+- **Newer agents beat older versions** — the central self-play question. The
+  current agent scores 0.86 vs its earliest snapshot and 0.69 vs a mid-training
+  snapshot (both started near 0.5).
+- **No catastrophic forgetting**: win rate vs Random stays 0.89–0.93 for the whole
+  run, because 20 % of self-play games are still against the fixed baselines and
+  30 % against historical snapshots.
