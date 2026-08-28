@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.pt
+*.pth
+runs/
+experiments/**/checkpoints/
+checkpoints/*
+!checkpoints/.gitkeep
+.venv/
+venv/
