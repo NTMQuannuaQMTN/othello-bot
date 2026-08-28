@@ -4,6 +4,7 @@ from .replay_buffer import Batch, ReplayBuffer
 from .agent import AgentMeta, DQNAgent, NetworkConfig
 from .opponents import FixedOpponentEnv
 from .trainer import DQNConfig, DQNTrainer, TrainMetrics
+from .curriculum import CurriculumConfig, Stage, run_curriculum
 
 __all__ = [
     "SmallOthelloNet",
@@ -18,4 +19,7 @@ __all__ = [
     "DQNTrainer",
     "DQNConfig",
     "TrainMetrics",
+    "run_curriculum",
+    "CurriculumConfig",
+    "Stage",
 ]

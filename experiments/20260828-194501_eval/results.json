@@ -1,0 +1,99 @@
+{
+  "generated_utc": "2026-08-28T11:55:12.485806+00:00",
+  "seed": 20260828,
+  "elo_kind": "internal",
+  "elo": {
+    "minimax:4": 2372.079591089551,
+    "minimax:3": 1803.5073494571582,
+    "minimax:2": 1596.8143272656368,
+    "heuristic": 1444.9001794005526,
+    "greedy": 936.8070907153017,
+    "random": 845.8914620718101
+  },
+  "matches": [
+    {
+      "name_a": "greedy",
+      "name_b": "random",
+      "num_games": 150,
+      "a_wins": 87,
+      "b_wins": 57,
+      "draws": 6,
+      "a_win_rate": 0.6,
+      "ci_low": 0.5200476798506317,
+      "ci_high": 0.6749580923202245,
+      "mean_disc_diff": 4.78
+    },
+    {
+      "name_a": "heuristic",
+      "name_b": "random",
+      "num_games": 150,
+      "a_wins": 143,
+      "b_wins": 5,
+      "draws": 2,
+      "a_win_rate": 0.96,
+      "ci_low": 0.9154854608728422,
+      "ci_high": 0.9815410911130964,
+      "mean_disc_diff": 32.906666666666666
+    },
+    {
+      "name_a": "heuristic",
+      "name_b": "greedy",
+      "num_games": 150,
+      "a_wins": 141,
+      "b_wins": 8,
+      "draws": 1,
+      "a_win_rate": 0.9433333333333334,
+      "ci_low": 0.8940868479001036,
+      "ci_high": 0.9704387420573592,
+      "mean_disc_diff": 35.49333333333333
+    },
+    {
+      "name_a": "minimax:2",
+      "name_b": "heuristic",
+      "num_games": 150,
+      "a_wins": 117,
+      "b_wins": 32,
+      "draws": 1,
+      "a_win_rate": 0.7833333333333333,
+      "ci_low": 0.7107737129703752,
+      "ci_high": 0.8417426415137176,
+      "mean_disc_diff": 24.46
+    },
+    {
+      "name_a": "minimax:3",
+      "name_b": "heuristic",
+      "num_games": 150,
+      "a_wins": 138,
+      "b_wins": 11,
+      "draws": 1,
+      "a_win_rate": 0.9233333333333333,
+      "ci_low": 0.8694098512882312,
+      "ci_high": 0.9561145842350603,
+      "mean_disc_diff": 39.693333333333335
+    },
+    {
+      "name_a": "minimax:4",
+      "name_b": "heuristic",
+      "num_games": 150,
+      "a_wins": 149,
+      "b_wins": 0,
+      "draws": 1,
+      "a_win_rate": 0.9966666666666667,
+      "ci_low": 0.9688767573066862,
+      "ci_high": 0.9996519111418997,
+      "mean_disc_diff": 45.8
+    },
+    {
+      "name_a": "minimax:3",
+      "name_b": "greedy",
+      "num_games": 150,
+      "a_wins": 149,
+      "b_wins": 1,
+      "draws": 0,
+      "a_win_rate": 0.9933333333333333,
+      "ci_low": 0.9632062470660241,
+      "ci_high": 0.9988222289768665,
+      "mean_disc_diff": 46.306666666666665
+    }
+  ]
+}

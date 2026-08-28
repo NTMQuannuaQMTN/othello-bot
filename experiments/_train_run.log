@@ -1,0 +1,2 @@
+run dir: experiments/20260828-195606_dqn_curriculum
+stages: [('stage1_random', 120000), ('stage2_random_greedy', 120000), ('stage3_heuristic', 160000)]
