@@ -38,8 +38,20 @@ sure its `bin/` is on `PATH` or invoke tools as `python3 -m <tool>`.
 export PYTHONPATH=src
 python3 -m pytest                              # test suite
 python3 scripts/evaluate.py  --config configs/evaluation.yaml
-python3 scripts/train.py     --config configs/train.yaml
-python3 scripts/play.py      --checkpoint checkpoints/latest.pt
+python3 scripts/train.py     --config configs/train.yaml     # live progress bar in a terminal
+python3 scripts/selfplay.py  --config configs/selfplay.yaml --init <checkpoint.pt>
+python3 scripts/track.py     --run experiments/<run_dir>     # strength curves over checkpoints
+python3 scripts/play.py      --checkpoint experiments/<run_dir>/checkpoints/final.pt
+```
+
+`train.py` / `selfplay.py` show a `tqdm` progress bar (total env-steps, current
+stage, live epsilon / loss / mean-return) plus periodic eval lines. In a terminal
+it's automatic; when output is redirected to a file the bar is replaced by plain
+`[stage] N/total steps (pct%)` lines. Force with `--progress on|off`. Watch a
+backgrounded run with:
+
+```bash
+tail -f experiments/<run_dir>/metrics.jsonl        # structured, one JSON row per eval/chunk
 ```
 
 ## Layout

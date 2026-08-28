@@ -32,6 +32,7 @@ def main(argv=None) -> int:
     ap.add_argument("--init", default=None, help="warm-start checkpoint (overrides config)")
     ap.add_argument("--steps-scale", type=float, default=1.0)
     ap.add_argument("--out", default="experiments")
+    ap.add_argument("--progress", choices=["auto", "on", "off"], default="auto")
     args = ap.parse_args(argv)
 
     cfg = load_config(args.config)
@@ -77,7 +78,8 @@ def main(argv=None) -> int:
     write_metadata(run_dir, dict(cfg), extra={"init_checkpoint": init_ckpt,
                                               "steps_scale": scale})
     print(f"run dir: {run_dir}")
-    run_self_play(agent, sp_cfg, run_dir, seed=seed)
+    progress = {"auto": "auto", "on": True, "off": False}[args.progress]
+    run_self_play(agent, sp_cfg, run_dir, seed=seed, progress=progress)
 
     # plots
     rows = MetricLogger.load(run_dir / "metrics.jsonl")

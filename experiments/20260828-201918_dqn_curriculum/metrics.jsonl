@@ -11,3 +11,31 @@
 {"phase": "train", "stage": "stage1_random", "env_steps": 75000, "train_steps": 36500, "episodes": 2586, "epsilon": 0.05, "mean_return_100": 0.0}
 {"phase": "eval", "stage": "stage1_random", "train_steps": 44000, "winrate_vs_random": 0.745, "disc_diff_vs_random": 12.18, "winrate_vs_greedy": 0.71, "disc_diff_vs_greedy": 11.15, "winrate_vs_heuristic": 0.11, "disc_diff_vs_heuristic": -29.06}
 {"phase": "train", "stage": "stage1_random", "env_steps": 90000, "train_steps": 44000, "episodes": 3104, "epsilon": 0.05, "mean_return_100": 0.2}
+{"phase": "eval", "stage": "stage1_random", "train_steps": 51500, "winrate_vs_random": 0.885, "disc_diff_vs_random": 17.68, "winrate_vs_greedy": 0.7, "disc_diff_vs_greedy": 10.01, "winrate_vs_heuristic": 0.035, "disc_diff_vs_heuristic": -30.55}
+{"phase": "train", "stage": "stage1_random", "env_steps": 105000, "train_steps": 51500, "episodes": 3620, "epsilon": 0.05, "mean_return_100": 0.46}
+{"phase": "eval", "stage": "stage1_random", "train_steps": 59000, "winrate_vs_random": 0.695, "disc_diff_vs_random": 8.31, "winrate_vs_greedy": 0.675, "disc_diff_vs_greedy": 6.73, "winrate_vs_heuristic": 0.04, "disc_diff_vs_heuristic": -31.71}
+{"phase": "train", "stage": "stage1_random", "env_steps": 120000, "train_steps": 59000, "episodes": 4135, "epsilon": 0.05, "mean_return_100": 0.44}
+{"phase": "eval", "stage": "stage2_random_greedy", "train_steps": 66500, "winrate_vs_random": 0.825, "disc_diff_vs_random": 13.26, "winrate_vs_greedy": 0.735, "disc_diff_vs_greedy": 10.99, "winrate_vs_heuristic": 0.095, "disc_diff_vs_heuristic": -27.73}
+{"phase": "train", "stage": "stage2_random_greedy", "env_steps": 135000, "train_steps": 66500, "episodes": 4661, "epsilon": 0.05, "mean_return_100": 0.43}
+{"phase": "eval", "stage": "stage2_random_greedy", "train_steps": 74000, "winrate_vs_random": 0.78, "disc_diff_vs_random": 13.94, "winrate_vs_greedy": 0.8, "disc_diff_vs_greedy": 12.78, "winrate_vs_heuristic": 0.2, "disc_diff_vs_heuristic": -21.16}
+{"phase": "train", "stage": "stage2_random_greedy", "env_steps": 150000, "train_steps": 74000, "episodes": 5180, "epsilon": 0.05, "mean_return_100": 0.46}
+{"phase": "eval", "stage": "stage2_random_greedy", "train_steps": 81500, "winrate_vs_random": 0.815, "disc_diff_vs_random": 14.29, "winrate_vs_greedy": 0.695, "disc_diff_vs_greedy": 9.19, "winrate_vs_heuristic": 0.17, "disc_diff_vs_heuristic": -26.0}
+{"phase": "train", "stage": "stage2_random_greedy", "env_steps": 165000, "train_steps": 81500, "episodes": 5703, "epsilon": 0.05, "mean_return_100": 0.41}
+{"phase": "eval", "stage": "stage2_random_greedy", "train_steps": 89000, "winrate_vs_random": 0.695, "disc_diff_vs_random": 6.78, "winrate_vs_greedy": 0.615, "disc_diff_vs_greedy": 5.71, "winrate_vs_heuristic": 0.075, "disc_diff_vs_heuristic": -31.7}
+{"phase": "train", "stage": "stage2_random_greedy", "env_steps": 180000, "train_steps": 89000, "episodes": 6222, "epsilon": 0.05, "mean_return_100": 0.43}
+{"phase": "eval", "stage": "stage2_random_greedy", "train_steps": 96500, "winrate_vs_random": 0.84, "disc_diff_vs_random": 18.12, "winrate_vs_greedy": 0.775, "disc_diff_vs_greedy": 12.99, "winrate_vs_heuristic": 0.085, "disc_diff_vs_heuristic": -31.58}
+{"phase": "train", "stage": "stage2_random_greedy", "env_steps": 195000, "train_steps": 96500, "episodes": 6744, "epsilon": 0.05, "mean_return_100": 0.5}
+{"phase": "eval", "stage": "stage2_random_greedy", "train_steps": 104000, "winrate_vs_random": 0.84, "disc_diff_vs_random": 17.91, "winrate_vs_greedy": 0.825, "disc_diff_vs_greedy": 15.33, "winrate_vs_heuristic": 0.205, "disc_diff_vs_heuristic": -23.41}
+{"phase": "train", "stage": "stage2_random_greedy", "env_steps": 210000, "train_steps": 104000, "episodes": 7266, "epsilon": 0.05, "mean_return_100": 0.44}
+{"phase": "eval", "stage": "stage2_random_greedy", "train_steps": 111500, "winrate_vs_random": 0.875, "disc_diff_vs_random": 15.73, "winrate_vs_greedy": 0.835, "disc_diff_vs_greedy": 14.77, "winrate_vs_heuristic": 0.27, "disc_diff_vs_heuristic": -16.81}
+{"phase": "train", "stage": "stage2_random_greedy", "env_steps": 225000, "train_steps": 111500, "episodes": 7787, "epsilon": 0.05, "mean_return_100": 0.54}
+{"phase": "eval", "stage": "stage2_random_greedy", "train_steps": 119000, "winrate_vs_random": 0.75, "disc_diff_vs_random": 14.4, "winrate_vs_greedy": 0.715, "disc_diff_vs_greedy": 12.5, "winrate_vs_heuristic": 0.245, "disc_diff_vs_heuristic": -20.3}
+{"phase": "train", "stage": "stage2_random_greedy", "env_steps": 240000, "train_steps": 119000, "episodes": 8306, "epsilon": 0.05, "mean_return_100": 0.68}
+{"phase": "eval", "stage": "stage3_heuristic", "train_steps": 126500, "winrate_vs_random": 0.9, "disc_diff_vs_random": 20.03, "winrate_vs_greedy": 0.89, "disc_diff_vs_greedy": 19.79, "winrate_vs_heuristic": 0.26, "disc_diff_vs_heuristic": -17.58}
+{"phase": "train", "stage": "stage3_heuristic", "env_steps": 255000, "train_steps": 126500, "episodes": 8828, "epsilon": 0.05, "mean_return_100": 0.3}
+{"phase": "eval", "stage": "stage3_heuristic", "train_steps": 134000, "winrate_vs_random": 0.86, "disc_diff_vs_random": 17.66, "winrate_vs_greedy": 0.84, "disc_diff_vs_greedy": 17.52, "winrate_vs_heuristic": 0.195, "disc_diff_vs_heuristic": -19.42}
+{"phase": "train", "stage": "stage3_heuristic", "env_steps": 270000, "train_steps": 134000, "episodes": 9351, "epsilon": 0.05, "mean_return_100": 0.46}
+{"phase": "eval", "stage": "stage3_heuristic", "train_steps": 141500, "winrate_vs_random": 0.855, "disc_diff_vs_random": 19.69, "winrate_vs_greedy": 0.855, "disc_diff_vs_greedy": 17.16, "winrate_vs_heuristic": 0.2, "disc_diff_vs_heuristic": -22.45}
+{"phase": "train", "stage": "stage3_heuristic", "env_steps": 285000, "train_steps": 141500, "episodes": 9880, "epsilon": 0.05, "mean_return_100": 0.36}
+{"phase": "eval", "stage": "stage3_heuristic", "train_steps": 149000, "winrate_vs_random": 0.725, "disc_diff_vs_random": 10.18, "winrate_vs_greedy": 0.625, "disc_diff_vs_greedy": 7.01, "winrate_vs_heuristic": 0.125, "disc_diff_vs_heuristic": -28.6}
+{"phase": "train", "stage": "stage3_heuristic", "env_steps": 300000, "train_steps": 149000, "episodes": 10410, "epsilon": 0.05, "mean_return_100": 0.21}

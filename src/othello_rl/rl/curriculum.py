@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Sequence, Union
 
 from othello_rl.evaluation.harness import evaluate_agent, flatten_eval
 from othello_rl.utils.logging import MetricLogger
+from othello_rl.utils.progress import make_progress
 from .agent import DQNAgent
 from .opponents import FixedOpponentEnv
 from .trainer import DQNConfig, DQNTrainer
@@ -36,7 +37,14 @@ class CurriculumConfig:
     dqn: DQNConfig = field(default_factory=DQNConfig)
 
 
-def _make_eval_fn(agent, cfg: CurriculumConfig, logger: MetricLogger, stage_name: str):
+def _fmt_eval(flat: Dict[str, float]) -> str:
+    parts = [f"{k[len('winrate_vs_'):]}={v:.2f}"
+             for k, v in flat.items() if k.startswith("winrate_vs_")]
+    return " ".join(parts)
+
+
+def _make_eval_fn(agent, cfg: CurriculumConfig, logger: MetricLogger, stage_name: str,
+                  bar=None):
     def eval_fn(trainer: DQNTrainer) -> Dict[str, float]:
         agent.net.eval()
         result = evaluate_agent(agent, cfg.eval_opponents, num_games=cfg.eval_games,
@@ -44,21 +52,30 @@ def _make_eval_fn(agent, cfg: CurriculumConfig, logger: MetricLogger, stage_name
         flat = flatten_eval(result)
         row = {"phase": "eval", "stage": stage_name, "train_steps": trainer.train_steps, **flat}
         logger.log(**row)
+        msg = f"[{stage_name}] eval @ {trainer.env_steps} steps:  {_fmt_eval(flat)}"
+        if bar is not None:
+            bar.write(msg)
+        else:
+            print(msg, flush=True)
         return {"phase": "eval", "stage": stage_name, **flat}
     return eval_fn
 
 
 def run_curriculum(agent: DQNAgent, cfg: CurriculumConfig, run_dir: str | Path,
-                   seed: int = 0, progress: bool = False) -> MetricLogger:
+                   seed: int = 0, progress: "bool | str" = "auto") -> MetricLogger:
     run_dir = Path(run_dir)
     ckpt_dir = run_dir / "checkpoints"
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     logger = MetricLogger(run_dir / "metrics.jsonl")
 
+    grand_total = sum(s.env_steps for s in cfg.stages)
+    bar = make_progress(grand_total, enabled=progress, desc="curriculum")
+
     # baseline: evaluate the untrained network first (the comparison anchor)
     base = evaluate_agent(agent, cfg.eval_opponents, num_games=cfg.eval_games, seed=cfg.eval_seed)
     logger.log(phase="eval", stage="<untrained>", env_steps=0, train_steps=0,
                **flatten_eval(base))
+    bar.write(f"[<untrained>] baseline eval:  {_fmt_eval(flatten_eval(base))}")
     agent.save(ckpt_dir / "untrained.pt")
 
     trainer: Optional[DQNTrainer] = None
@@ -73,8 +90,9 @@ def run_curriculum(agent: DQNAgent, cfg: CurriculumConfig, run_dir: str | Path,
             trainer.env = env
             trainer._obs, trainer._info = env.reset(seed=seed)
 
-        eval_fn = _make_eval_fn(agent, cfg, logger, stage.name)
+        eval_fn = _make_eval_fn(agent, cfg, logger, stage.name, bar=bar)
         last_ckpt = [0]
+        bar.set_description(f"curriculum · {stage.name}")
 
         def periodic(tr: DQNTrainer, _stage=stage, _last=last_ckpt):
             if tr.env_steps - _last[0] >= cfg.checkpoint_every:
@@ -88,20 +106,29 @@ def run_curriculum(agent: DQNAgent, cfg: CurriculumConfig, run_dir: str | Path,
             chunk = min(cfg.eval_every, target - trainer.env_steps)
             trainer.learn(total_env_steps=chunk, eval_fn=eval_fn,
                           eval_every=cfg.eval_every, log_every=max(500, cfg.eval_every // 5),
-                          progress=progress)
+                          pbar=bar)
             periodic(trainer)
             recent_loss = [r["loss"] for r in trainer.metrics.history[-10:]
                            if isinstance(r.get("loss"), (int, float)) and r["loss"] == r["loss"]]
+            avg_loss = (sum(recent_loss) / len(recent_loss)) if recent_loss else None
+            mret = _mean_return(trainer)
+            eps = cfg.dqn.epsilon(trainer.env_steps)
             logger.log(phase="train", stage=stage.name, env_steps=trainer.env_steps,
                        train_steps=trainer.train_steps, episodes=trainer.episodes,
-                       epsilon=cfg.dqn.epsilon(trainer.env_steps),
-                       loss=(sum(recent_loss) / len(recent_loss)) if recent_loss else None,
-                       mean_return_100=_mean_return(trainer))
+                       epsilon=eps, loss=avg_loss, mean_return_100=mret)
+            pct = 100.0 * trainer.env_steps / max(1, grand_total)
+            bar.write(f"[{stage.name}] {trainer.env_steps}/{grand_total} steps "
+                      f"({pct:.0f}%)  eps={eps:.3f}  "
+                      f"loss={avg_loss:.4f}  ret100={mret:+.3f}"
+                      if avg_loss is not None else
+                      f"[{stage.name}] {trainer.env_steps}/{grand_total} steps "
+                      f"({pct:.0f}%)  eps={eps:.3f}  ret100={mret:+.3f}")
 
         trainer._sync_agent_meta()
         agent.save(ckpt_dir / f"{stage.name}_final.pt")
         total_env_steps = trainer.env_steps
 
+    bar.close()
     agent.save(ckpt_dir / "final.pt")
     logger.log(phase="done", env_steps=total_env_steps)
     return logger

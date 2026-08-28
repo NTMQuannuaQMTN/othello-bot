@@ -121,7 +121,7 @@ class SelfPlayConfig:
 
 
 def run_self_play(agent: DQNAgent, cfg: SelfPlayConfig, run_dir, seed: int = 0,
-                  progress: bool = False):
+                  progress: "bool | str" = "auto"):
     """Train ``agent`` by self-play against ``cfg.pool``, snapshotting the learner
     into the pool periodically and evaluating against baselines + historical
     snapshots (anti-forgetting)."""
@@ -129,6 +129,7 @@ def run_self_play(agent: DQNAgent, cfg: SelfPlayConfig, run_dir, seed: int = 0,
 
     from othello_rl.evaluation.harness import evaluate_agent, flatten_eval
     from othello_rl.utils.logging import MetricLogger
+    from othello_rl.utils.progress import make_progress
     from .opponents import FixedOpponentEnv
     from .trainer import DQNConfig, DQNTrainer
 
@@ -149,6 +150,8 @@ def run_self_play(agent: DQNAgent, cfg: SelfPlayConfig, run_dir, seed: int = 0,
 
     baseline_opponents = {s: s for s in pool.baseline_specs}
 
+    bar = make_progress(cfg.total_env_steps, enabled=progress, desc="self-play")
+
     def do_eval(where: str):
         agent.net.eval()
         res = evaluate_agent(agent, baseline_opponents, num_games=cfg.eval_games, seed=cfg.eval_seed)
@@ -163,6 +166,9 @@ def run_self_play(agent: DQNAgent, cfg: SelfPlayConfig, run_dir, seed: int = 0,
             hres = evaluate_agent(agent, targets, num_games=cfg.eval_games // 2, seed=cfg.eval_seed + 1)
             row.update(flatten_eval(hres))
         logger.log(**row)
+        parts = " ".join(f"{k[len('winrate_vs_'):]}={v:.2f}"
+                         for k, v in row.items() if k.startswith("winrate_vs_"))
+        bar.write(f"[self-play] eval ({where}) @ {trainer.env_steps} steps:  {parts}")
         return row
 
     do_eval("start")
@@ -171,12 +177,14 @@ def run_self_play(agent: DQNAgent, cfg: SelfPlayConfig, run_dir, seed: int = 0,
     last_snap = last_eval = last_ckpt = 0
     while trainer.env_steps < cfg.total_env_steps:
         chunk = min(2000, cfg.total_env_steps - trainer.env_steps)
-        trainer.learn(total_env_steps=chunk, log_every=2000, progress=progress)
+        trainer.learn(total_env_steps=chunk, log_every=2000, pbar=bar)
         s = trainer.env_steps
         if s - last_snap >= cfg.snapshot_every:
             last_snap = s
             trainer._sync_agent_meta()
             pool.add_snapshot(agent, tag=f"step{s}")
+            bar.write(f"[self-play] snapshot @ {s} steps  "
+                      f"(recent={pool.num_recent}, historical={pool.num_historical})")
             logger.log(phase="snapshot", env_steps=s, recent=pool.num_recent,
                        historical=pool.num_historical)
         if s - last_eval >= cfg.eval_every:
@@ -189,6 +197,7 @@ def run_self_play(agent: DQNAgent, cfg: SelfPlayConfig, run_dir, seed: int = 0,
 
     trainer._sync_agent_meta()
     do_eval("end")
+    bar.close()
     agent.save(ckpt_dir / "final.pt")
     logger.log(phase="done", env_steps=trainer.env_steps)
     return logger

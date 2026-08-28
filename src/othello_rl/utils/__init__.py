@@ -3,6 +3,7 @@ from .config import Config, dump_config, load_config
 from .seed import seed_everything, spawn_seed
 from .logging import MetricLogger
 from .experiment import create_run_dir, git_commit, write_metadata
+from .progress import make_progress
 
 __all__ = [
     "Config",
@@ -14,4 +15,5 @@ __all__ = [
     "create_run_dir",
     "write_metadata",
     "git_commit",
+    "make_progress",
 ]

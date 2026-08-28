@@ -83,8 +83,10 @@ def main(argv=None) -> int:
                     help="multiply every stage's env_steps (for quick smoke runs)")
     ap.add_argument("--stages", nargs="*", default=None, help="only run these stage names")
     ap.add_argument("--out", default="experiments")
-    ap.add_argument("--progress", action="store_true")
+    ap.add_argument("--progress", choices=["auto", "on", "off"], default="auto",
+                    help="progress bar: auto (bar only on a terminal), on, or off")
     args = ap.parse_args(argv)
+    progress = {"auto": "auto", "on": True, "off": False}[args.progress]
 
     cfg = load_config(args.config)
     seed = int(cfg.get("seed", 0))
@@ -102,7 +104,7 @@ def main(argv=None) -> int:
     print(f"run dir: {run_dir}")
     print(f"stages: {[(s.name, s.env_steps) for s in cur.stages]}")
 
-    run_curriculum(agent, cur, run_dir, seed=seed, progress=args.progress)
+    run_curriculum(agent, cur, run_dir, seed=seed, progress=progress)
 
     opponents = list(cur.eval_opponents)
     make_plots(run_dir, opponents)

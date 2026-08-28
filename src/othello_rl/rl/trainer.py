@@ -135,14 +135,18 @@ class DQNTrainer:
     def learn(self, total_env_steps: int,
               eval_fn: Optional[Callable[["DQNTrainer"], Dict[str, float]]] = None,
               eval_every: int = 5_000, log_every: int = 1_000,
-              progress: bool = False) -> TrainMetrics:
-        pbar = None
-        if progress:
-            try:
-                from tqdm import tqdm
-                pbar = tqdm(total=total_env_steps)
-            except ImportError:
-                pbar = None
+              progress: "bool | str" = False, pbar=None) -> TrainMetrics:
+        """Run ``total_env_steps`` of collect + learn.
+
+        ``pbar`` : an external progress bar (from
+        :func:`othello_rl.utils.progress.make_progress`) to advance; it is *not*
+        closed here. If ``pbar`` is None and ``progress`` is truthy a local bar is
+        created and closed.
+        """
+        own_bar = pbar is None
+        if own_bar:
+            from othello_rl.utils.progress import make_progress
+            pbar = make_progress(total_env_steps, enabled=progress or False)
 
         start = time.time()
         last_loss = float("nan")
@@ -154,20 +158,24 @@ class DQNTrainer:
                 l = self.train_step()
                 if l is not None:
                     last_loss = l
-            if pbar is not None:
-                pbar.update(1)
+            pbar.update(1)
 
             if self.env_steps % log_every == 0:
+                sps = self.env_steps / max(1e-6, time.time() - start)
+                mret = float(np.mean(self._returns)) if self._returns else 0.0
                 row = {
                     "env_steps": self.env_steps,
                     "train_steps": self.train_steps,
                     "episodes": self.episodes,
                     "epsilon": self.cfg.epsilon(self.env_steps),
                     "loss": last_loss,
-                    "mean_return_100": float(np.mean(self._returns)) if self._returns else 0.0,
-                    "sps": self.env_steps / max(1e-6, time.time() - start),
+                    "mean_return_100": mret,
+                    "sps": sps,
                 }
                 self.metrics.log(**row)
+                pbar.set_postfix({"eps": round(row["epsilon"], 3),
+                                  "loss": round(last_loss, 4) if last_loss == last_loss else "-",
+                                  "ret100": round(mret, 3)})
 
             if eval_fn is not None and self.env_steps % eval_every == 0:
                 self._sync_agent_meta()
@@ -175,7 +183,7 @@ class DQNTrainer:
                 eval_row = {"env_steps": self.env_steps, **eval_row}
                 self.metrics.log(**eval_row)
 
-        if pbar is not None:
+        if own_bar:
             pbar.close()
         self._sync_agent_meta()
         return self.metrics
