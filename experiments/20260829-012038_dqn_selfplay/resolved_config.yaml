@@ -1,0 +1,42 @@
+seed: 20260828
+device: cpu
+tag: dqn_selfplay
+init_checkpoint: null
+network:
+  channels: 32
+  blocks: 2
+  hidden: 96
+  with_value_head: true
+  norm: false
+dqn:
+  gamma: 0.99
+  lr: 0.0005
+  batch_size: 128
+  buffer_capacity: 100000
+  warmup_steps: 2000
+  train_freq: 2
+  target_sync: 750
+  grad_clip: 10.0
+  double_dqn: true
+  epsilon_start: 0.5
+  epsilon_end: 0.05
+  epsilon_decay_steps: 40000
+self_play:
+  total_env_steps: 200000
+  snapshot_every: 20000
+  eval_every: 20000
+  eval_games: 100
+  checkpoint_every: 40000
+  learner_color: random
+  opening_plies: 4
+  pool:
+    baseline_specs:
+    - random
+    - greedy
+    - heuristic
+    distribution:
+      baseline: 0.2
+      historical: 0.3
+      recent: 0.5
+    recent_capacity: 5
+    historical_every: 3

@@ -71,6 +71,22 @@ def test_trainer_smoke_runs_and_loss_is_finite():
     assert agent.meta.env_steps == trainer.env_steps
 
 
+def test_training_is_deterministic_given_seed():
+    def run():
+        from othello_rl.utils.seed import seed_everything
+        seed_everything(123)
+        ag = DQNAgent(NetworkConfig(channels=8, blocks=2, hidden=16), seed=123)
+        env = FixedOpponentEnv("random", learner_color="random", seed=123, opening_plies=4)
+        tr = DQNTrainer(env, ag, DQNConfig(batch_size=16, buffer_capacity=1000,
+                                           warmup_steps=50, target_sync=25,
+                                           epsilon_decay_steps=400), seed=123)
+        tr.learn(700, log_every=700)
+        import torch
+        with torch.no_grad():
+            return float(sum(p.abs().sum() for p in ag.net.parameters()))
+    assert run() == run()
+
+
 def test_epsilon_schedule_monotone_decreasing():
     cfg = DQNConfig(epsilon_start=1.0, epsilon_end=0.05, epsilon_decay_steps=1000)
     vals = [cfg.epsilon(s) for s in range(0, 1500, 100)]

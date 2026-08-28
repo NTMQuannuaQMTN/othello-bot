@@ -1,0 +1,3 @@
+{"phase": "eval", "where": "start", "env_steps": 0, "train_steps": 0, "winrate_vs_random": 0.895, "disc_diff_vs_random": 20.54, "winrate_vs_greedy": 0.735, "disc_diff_vs_greedy": 11.15, "winrate_vs_heuristic": 0.18, "disc_diff_vs_heuristic": -25.1, "winrate_vs_hist0": 0.44, "disc_diff_vs_hist0": -0.62}
+{"phase": "snapshot", "env_steps": 12000, "recent": 2, "historical": 1}
+{"phase": "eval", "where": "periodic", "env_steps": 12000, "train_steps": 5000, "winrate_vs_random": 0.865, "disc_diff_vs_random": 15.87, "winrate_vs_greedy": 0.845, "disc_diff_vs_greedy": 18.79, "winrate_vs_heuristic": 0.22, "disc_diff_vs_heuristic": -20.17, "winrate_vs_hist0": 0.7, "disc_diff_vs_hist0": 7.24}

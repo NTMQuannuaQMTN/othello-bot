@@ -76,13 +76,13 @@ pass, and the full suite is green.
 
 ## Phase 6 — Training vs fixed opponents
 
-- [ ] `rl/opponents.py` fixed-opponent env wrapper
-- [ ] `scripts/train.py` + `configs/train.yaml`
-- [ ] Stage 1: vs Random — reproducible win-rate gain over untrained net
-- [ ] Periodic eval + checkpointing + metrics JSON + plot
-- [ ] Stage 2: vs Random+Greedy
-- [ ] Stage 3: vs Heuristic
-- [ ] Document results
+- [x] `rl/opponents.py` fixed-opponent env wrapper
+- [x] `scripts/train.py` + `configs/train.yaml`
+- [x] Stage 1: vs Random — reproducible win-rate gain over untrained net
+- [x] Periodic eval + checkpointing + metrics JSON + plot
+- [x] Stage 2: vs Random+Greedy
+- [x] Stage 3: vs Heuristic
+- [x] Document results
 
 ## Phase 7 — Self-play
 

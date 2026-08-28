@@ -1,58 +1,54 @@
 # Progress
 
-_Last updated: 2026-08-28_
+_Last updated: 2026-08-29_
 
 ## Current phase
-Phase 6 — running the tuned DQN curriculum and documenting results.
-(Phases 7–9 code + tests complete; empirical self-play run still pending.)
+Phases 1–9 complete. Phase 7 self-play empirical run in progress; then optional
+tuning / AlphaZero upgrade (future phase).
 
 ## Current task
-A full 3-stage curriculum run is executing in the background
-(`experiments/20260828-201918_dqn_curriculum/`, ~380k env steps). When it
-finishes: run `scripts/track.py` on its checkpoints, record win-rate/Elo curves,
-verify the "beats Random reproducibly" criterion, then do a self-play run.
+Self-play run (`scripts/selfplay.py`, warm-started from the curriculum
+`final.pt`) is executing. When it finishes: fill in section 3 of
+`experiments/RESULTS.md` with its anti-forgetting metrics.
 
 ## Completed tasks
-- Phase 0–5: see git history. Engine + baselines + evaluation framework + RL env
-  + masked Double-DQN, all tested.
-- Phase 3 baseline eval (real run, `experiments/20260828-194501_eval/`): sensible
-  Elo ordering minimax4 2372 > minimax3 1804 > minimax2 1597 > heuristic 1445 >
-  greedy 937 > random 846; heuristic beats random 0.96, minimax2 beats heuristic
-  0.78, minimax4 beats heuristic 1.00.
-- Phase 6 code: `rl/curriculum.py`, `scripts/train.py`, `configs/train.yaml`;
-  untrained-baseline anchor eval, periodic eval + checkpoint + JSONL metrics,
-  win-rate/return plots, `summary.md`.
-  - Stage-1 sanity run (60k steps, small net): win rate vs Random 0.51 → 0.66,
-    vs Greedy 0.43 → 0.64 (noisy). Added opening randomisation to training to
-    align with the opening-randomised eval; tuned hyperparameters; larger run
-    in progress.
-- Phase 7 code: `rl/self_play.py` — `OpponentPool` (baseline / historical /
-  recent, configurable distribution), `run_self_play` with snapshotting +
-  anti-forgetting eval vs historical snapshots. Tested (smoke + unit).
-- Phase 8 code: `evaluation/tracking.py` + `scripts/track.py` — per-checkpoint
-  win rate vs baselines, round-robin internal Elo, win-rate/Elo-vs-step plots,
-  `tracking.md/json`. `utils/logging.py` (JSONL+CSV), `utils/experiment.py`
-  (git commit + versions metadata). Tested.
-- Phase 9: `scripts/play.py` terminal UI (choose colour, baseline or checkpoint
-  opponent, shows board + legal moves). Smoke-tested.
+- **Phase 0–5** — scaffolding, tested Othello engine, 4 baseline agents,
+  evaluation framework (tournaments / Wilson CI / internal Elo / reports),
+  RL env, masked Double-DQN (network / replay / agent / trainer). See git history.
+- **Phase 3 baseline eval** (`experiments/20260828-194501_eval/`): Elo ordering
+  minimax4 2372 > minimax3 1804 > minimax2 1597 > heuristic 1445 > greedy 937 >
+  random 846; full table in `experiments/RESULTS.md`.
+- **Phase 6 — DQN curriculum, VALIDATED**
+  (`experiments/20260828-201918_dqn_curriculum/`, 380k env steps):
+  - Untrained → trained: vs Random 0.55 → 0.82, vs Greedy 0.41 → 0.82,
+    vs Heuristic 0.05 → 0.22. Internal-Elo curve 1585 → ~1910.
+  - Success criterion (beat Random reproducibly) met on 2 seeds
+    (`20260829-002434_repro_s777`: 0.27 → 0.71). Training is deterministic given a
+    seed (unit-tested).
+  - Artifacts: `winrate_vs_steps.png`, `train_return.png`, `tracking/` plots,
+    18 checkpoints, `metrics.jsonl`, `summary.md`.
+- **Phase 7 code** — `OpponentPool` + `run_self_play` (anti-forgetting eval),
+  `scripts/selfplay.py`, `configs/selfplay.yaml`. Tested.
+- **Phase 8** — `scripts/track.py` (per-checkpoint win rate + round-robin
+  internal Elo + curves); `utils/logging.py`, `utils/experiment.py`,
+  `utils/progress.py`.
+- **Phase 9** — `scripts/play.py` terminal UI.
+- **Progress bars** — `train.py` / `selfplay.py` show a continuous tqdm bar
+  (`--progress auto|on|off`); plain `[stage] N/total (pct%)` lines when redirected.
 
 ## Test status
-`python3 -m pytest` → 110 passed (~35–40 s; slower while training runs).
-
-## Latest training result
-Stage-1 sanity (see above). Full curriculum run in progress — results pending.
+`python3 -m pytest` → 117 passed (~30–60 s depending on background load).
 
 ## Known issues
 - Python 3.9.6 only; deps `--user`; run `python3 -m pytest`.
-- CPU-only, pure-Python engine + conv net → ~100–120 env steps/s. Training runs
-  are minutes–hours; configs are sized accordingly.
-- DQN eval win rates are noisy at 80–100 games/eval; trends over several evals
-  are what matter, not single points.
+- CPU-only, pure-Python engine → ~30–120 env steps/s depending on eval cadence;
+  a full curriculum run is ~3–4 h.
+- DQN eval win rates are noisy at 60–100 games; trust the multi-eval trend and
+  the internal-Elo curve, not single points.
+- Agent is not yet competitive with the Heuristic / Minimax — expected; next step
+  is the AlphaZero-style Policy+Value+MCTS upgrade (`docs/alphazero-plan.md`).
 
 ## Next action
-1. Wait for the curriculum run; run `scripts/track.py --run <dir>`.
-2. Write `experiments/<dir>/RESULTS.md` with the win-rate/Elo curves and a
-   reproducibility check (rerun stage 1 with a 2nd seed).
-3. Do a `run_self_play` run from the curriculum's final checkpoint; check the
-   anti-forgetting metrics.
-4. Mark Phase 6/7 empirical tasks done in TASKS.md once documented.
+1. Finish + document the self-play run (section 3 of `RESULTS.md`).
+2. (Optional) hyperparameter tuning pass on the DQN (γ=1.0, longer schedule).
+3. Future phase: implement `docs/alphazero-plan.md`.
