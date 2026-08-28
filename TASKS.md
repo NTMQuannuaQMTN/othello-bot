@@ -102,6 +102,12 @@ pass, and the full suite is green.
 
 - [x] `scripts/play.py` terminal UI
 
-## Future — AlphaZero-inspired
+## Future — AlphaZero-inspired (NOT started — see `docs/alphazero-plan.md`)
 
-- [x] Policy+Value net, MCTS, visit-count targets, iterative self-play, eval gating
+- [ ] `rl/az_network.py` — shared torso → (policy logits 65, value scalar)
+- [ ] `rl/mcts.py` — PUCT search over `Board`, Dirichlet root noise, masked priors
+- [ ] `rl/az_selfplay.py` — MCTS self-play, store `(obs, π, z)` triples
+- [ ] `rl/az_trainer.py` — `(z−v)² − πᵀ log p` loss over a self-play replay
+- [ ] `rl/az_arena.py` — gate candidate vs current best (promote if > ~55%)
+- [ ] `scripts/az_train.py` — self-play → train → gate iteration loop
+- [ ] Milestone: iterated training shows rising internal Elo vs baselines + prev best
