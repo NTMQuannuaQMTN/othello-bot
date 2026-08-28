@@ -12,8 +12,9 @@ strict sign-alternation does not hold. Each child is handled explicitly:
   -> add the negated child value, window negated/swapped
 
 A node with no legal moves but a non-terminal position performs a pass (which
-does not consume search depth). Deterministic: children are examined in ascending
-action-index order; ties keep the first (lowest-index) move.
+does not consume search depth). Children are examined in a fixed static-priority
+order (corners first) with ascending action index as the tie-break, so the search
+is deterministic and pruning is more effective.
 """
 from __future__ import annotations
 
@@ -24,6 +25,24 @@ from .base import Agent, Move
 from .heuristic_agent import DEFAULT_WEIGHTS, evaluate
 
 INF = float("inf")
+
+# Static move-ordering priority (corners best, X/C squares worst). Better
+# ordering => more alpha-beta cutoffs. Ties fall back to ascending action index,
+# so the search stays deterministic.
+_ORDER = [
+    120, -20,  20,   5,   5,  20, -20, 120,
+    -20, -40,  -5,  -5,  -5,  -5, -40, -20,
+     20,  -5,  15,   3,   3,  15,  -5,  20,
+      5,  -5,   3,   3,   3,   3,  -5,   5,
+      5,  -5,   3,   3,   3,   3,  -5,   5,
+     20,  -5,  15,   3,   3,  15,  -5,  20,
+    -20, -40,  -5,  -5,  -5,  -5, -40, -20,
+    120, -20,  20,   5,   5,  20, -20, 120,
+]
+
+
+def _ordered(moves):
+    return sorted(moves, key=lambda mv: (-_ORDER[mv[0] * 8 + mv[1]], mv[0] * 8 + mv[1]))
 
 
 class MinimaxAgent(Agent):
@@ -41,10 +60,10 @@ class MinimaxAgent(Agent):
         if not moves:
             return None
         self.nodes = 0
-        best_move = min(moves, key=lambda mv: mv[0] * 8 + mv[1])
+        best_move = _ordered(moves)[0]
         best_val = -INF
         alpha = -INF
-        for m in sorted(moves, key=lambda mv: mv[0] * 8 + mv[1]):
+        for m in _ordered(moves):
             val = self._child_value(state, m, self.depth, alpha, INF, prune=True)
             if val > best_val:
                 best_val = val
@@ -75,7 +94,7 @@ class MinimaxAgent(Agent):
             return -self._value(state.apply(None), depth, -beta, -alpha, prune)
 
         value = -INF
-        for m in sorted(moves, key=lambda mv: mv[0] * 8 + mv[1]):
+        for m in _ordered(moves):
             value = max(value, self._child_value(state, m, depth, alpha, beta, prune))
             alpha = max(alpha, value)
             if prune and alpha >= beta:

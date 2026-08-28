@@ -1,0 +1,4 @@
+  greedy vs random ... A 87-57-6 (win rate 0.600)
+  heuristic vs random ... A 143-5-2 (win rate 0.960)
+  heuristic vs greedy ... A 141-8-1 (win rate 0.943)
+  minimax:2 vs heuristic ... 

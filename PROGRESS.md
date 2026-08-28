@@ -3,36 +3,60 @@
 _Last updated: 2026-08-28_
 
 ## Current phase
-Phase 2 — Baseline agents
+Phase 6 — Training vs fixed opponents (curriculum).
 
 ## Current task
-Implement `agents/base.py` interface + Random/Greedy/Heuristic/Minimax agents and tests.
+Write `scripts/train.py` + `configs/train.yaml`; run Stage 1 (vs Random) and
+verify a reproducible win-rate gain over an untrained network.
 
 ## Completed tasks
-- Phase 0: project scaffolding, docs, dependency setup, `pytest` runs.
-- Phase 1: Othello engine complete.
-  - `environment/board.py`: representation, constants, 8 directions, coord helpers,
-    `Board` state class (immutable array + side to move, `apply`/`legal_moves`/
-    `legal_actions`/`must_pass`/`is_terminal`/`winner`/`scores`/`render`).
-  - `environment/rules.py`: `flips_for_move`, `legal_moves`, `has_any_move`,
-    `apply_move`, `next_player` (handles forced-pass + consecutive move),
-    `is_terminal`, `score`, `winner`.
-  - 31 tests: initial state, H/V/diagonal/multi-direction/corner/edge/multi-piece
-    captures, illegal (occupied/no-capture/out-of-range/illegal-pass), forced pass,
-    termination (full board / stuck / draw), 300 random-playout fuzz with
-    invariant checks. All green.
+- Phase 0: scaffolding, docs, deps.
+- Phase 1: Othello engine + 31 tests (captures, illegal, pass, termination, fuzz).
+  Move generation later switched to a fast short-circuiting scalar path
+  (`rules._has_bracket` over `board.tolist()`); a numpy `legal_move_mask` exists
+  and is cross-checked against the scalar reference.
+- Phase 2: RandomAgent, GreedyAgent, HeuristicAgent (configurable weighted eval),
+  MinimaxAgent (negamax + alpha-beta + static move ordering, pass-aware). 18 tests.
+- Phase 3: `evaluation/` — tournament (`play_game`/`play_match`/`round_robin` with
+  reproducible per-game seeds and random opening plies to diversify deterministic
+  matchups), metrics (Wilson CI), internal Elo (`EloModel`, clearly labelled
+  "internal"), JSON+markdown+PNG report, `scripts/evaluate.py`,
+  `configs/evaluation.yaml`. Tests for all.
+- Phase 4: `environment/environment.py` `OthelloEnv` — canonical (3,8,8) obs,
+  length-65 action mask (64 = pass), sparse ±1 reward from mover's perspective,
+  `illegal_move_mode` raise/loss. 9 tests.
+- Phase 5: `docs/rl-algorithm.md` (justifies masked Double-DQN). `rl/network.py`
+  (`SmallOthelloNet`, conv torso + Q head + optional value head, `masked_q`),
+  `rl/replay_buffer.py` (uniform replay storing next-state masks), `rl/agent.py`
+  (`DQNAgent`: masked eps-greedy + greedy eval, implements baseline `Agent`,
+  checkpoint save/load/from_checkpoint, `clone_network`), `rl/opponents.py`
+  (`FixedOpponentEnv` -> stationary single-agent MDP), `rl/trainer.py`
+  (`DQNTrainer`: Double-DQN, target sync, Huber loss, eps schedule, metrics,
+  optional periodic eval hook). 16 RL tests incl. trainer smoke + checkpoint.
 
 ## Test status
-`python3 -m pytest` → 31 passed (~6s; the 300-game fuzz dominates runtime).
+`python3 -m pytest` -> 94 passed (~21s).
+
+## Latest baseline evaluation (experiments/, seed 20260828, 150 games/matchup,
+   opening_plies=4)
+A previous run (no opening randomisation) gave:
+  greedy>random 0.58 · heuristic>random 0.94 · heuristic>greedy 1.00 ·
+  minimax2~heuristic 0.50 · minimax3/4>heuristic 1.00 · minimax3>greedy 1.00.
+  Internal Elo: minimax3 2477, minimax4 2469, minimax2 1323, heuristic 1301,
+  random 793, greedy 637.
+A refreshed run with opening_plies=4 is in progress; see experiments/<ts>_eval/.
 
 ## Latest training result
-None (no RL yet).
+None yet — Phase 6 next.
 
 ## Known issues
-- Reference machine only has Python 3.9.6. Deps installed `--user` into
-  `~/Library/Python/3.9`; put its `bin/` on PATH or use `python3 -m pytest`.
-- Pure-Python rules are ~correct-but-slow; acceptable per "correctness first".
-  Revisit with bitboards only if RL throughput demands it.
+- Python 3.9.6 only; deps `--user`. Use `python3 -m pytest`.
+- Pure-Python minimax: depth 4 ~1.5 s/game. Fine for one-off evals, kept out of
+  the fast test path.
+- `greedy` internal Elo below `random`: pure max-flips greedy really is weak in
+  Othello and the baseline matchup graph is sparse; not a bug.
 
 ## Next action
-Phase 2: agent interface + 4 baseline agents + tests.
+Phase 6: `scripts/train.py`, `configs/train.yaml`, Stage 1 vs Random with
+periodic eval + checkpoints + win-rate plot; then Stages 2 (Random+Greedy) and 3
+(Heuristic). Document results here and under `experiments/`.

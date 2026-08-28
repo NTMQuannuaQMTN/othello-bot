@@ -16,8 +16,20 @@ from .board import (
     square_name,
 )
 from . import rules
+from .environment import (
+    NUM_ACTIONS,
+    OBS_SHAPE,
+    OthelloEnv,
+    encode_observation,
+    legal_action_mask,
+)
 
 __all__ = [
+    "OthelloEnv",
+    "encode_observation",
+    "legal_action_mask",
+    "OBS_SHAPE",
+    "NUM_ACTIONS",
     "BLACK",
     "WHITE",
     "EMPTY",

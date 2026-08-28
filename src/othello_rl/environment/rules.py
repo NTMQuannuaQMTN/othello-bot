@@ -54,24 +54,57 @@ def is_legal_move(board: np.ndarray, player: int, move: Move) -> bool:
     return len(flips_for_move(board, player, move)) > 0
 
 
+def _has_bracket(grid, row: int, col: int, player: int, opp: int) -> bool:
+    """Fast check on a nested-``list`` grid: does placing ``player`` at the empty
+    ``(row, col)`` flip anything? Short-circuits; used by the hot paths."""
+    for drow, dcol in DIRECTIONS:
+        r, c = row + drow, col + dcol
+        if not (0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE) or grid[r][c] != opp:
+            continue
+        r += drow
+        c += dcol
+        while 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
+            v = grid[r][c]
+            if v == opp:
+                r += drow
+                c += dcol
+                continue
+            if v == player:
+                return True
+            break
+    return False
+
+
 def legal_moves(board: np.ndarray, player: int) -> List[Tuple[int, int]]:
     """All legal placing moves for ``player``, sorted (row, then col)."""
+    opp = opponent(player)
+    grid = board.tolist()
     moves: List[Tuple[int, int]] = []
     for row in range(BOARD_SIZE):
+        grid_row = grid[row]
         for col in range(BOARD_SIZE):
-            if board[row, col] != EMPTY:
-                continue
-            if flips_for_move(board, player, (row, col)):
+            if grid_row[col] == EMPTY and _has_bracket(grid, row, col, player, opp):
                 moves.append((row, col))
     return moves
 
 
 def has_any_move(board: np.ndarray, player: int) -> bool:
+    opp = opponent(player)
+    grid = board.tolist()
     for row in range(BOARD_SIZE):
+        grid_row = grid[row]
         for col in range(BOARD_SIZE):
-            if board[row, col] == EMPTY and flips_for_move(board, player, (row, col)):
+            if grid_row[col] == EMPTY and _has_bracket(grid, row, col, player, opp):
                 return True
     return False
+
+
+def legal_move_mask(board: np.ndarray, player: int) -> np.ndarray:
+    """Boolean ``(8, 8)`` mask of legal placing moves for ``player``."""
+    mask = np.zeros((BOARD_SIZE, BOARD_SIZE), dtype=bool)
+    for r, c in legal_moves(board, player):
+        mask[r, c] = True
+    return mask
 
 
 def apply_move(board: np.ndarray, player: int, move: Move) -> np.ndarray:

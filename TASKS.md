@@ -49,30 +49,30 @@ pass, and the full suite is green.
 
 ## Phase 3 — Baseline evaluation system
 
-- [ ] `evaluation/tournament.py` — play_match / round-robin, alternating colours, seeds
-- [ ] `evaluation/metrics.py` — W/L/D, mean score diff, Wilson CI
-- [ ] `evaluation/elo.py` — internal Elo (labelled "internal")
-- [ ] Machine-readable results (JSON)
-- [ ] `scripts/evaluate.py` + `configs/evaluation.yaml`
-- [ ] Performance report generator (markdown + plot)
-- [ ] Tests for tournament/metrics/elo
+- [x] `evaluation/tournament.py` — play_match / round-robin, alternating colours, seeds
+- [x] `evaluation/metrics.py` — W/L/D, mean score diff, Wilson CI
+- [x] `evaluation/elo.py` — internal Elo (labelled "internal")
+- [x] Machine-readable results (JSON)
+- [x] `scripts/evaluate.py` + `configs/evaluation.yaml`
+- [x] Performance report generator (markdown + plot)
+- [x] Tests for tournament/metrics/elo
 
 ## Phase 4 — RL environment
 
-- [ ] `environment/environment.py` — `OthelloEnv` gym-like API
-- [ ] Canonical `(3,8,8)` observation + length-65 action mask
-- [ ] Sparse reward, done, info
-- [ ] Seeding
-- [ ] Tests: observation, mask, reward sign, termination, illegal action
+- [x] `environment/environment.py` — `OthelloEnv` gym-like API
+- [x] Canonical `(3,8,8)` observation + length-65 action mask
+- [x] Sparse reward, done, info
+- [x] Seeding
+- [x] Tests: observation, mask, reward sign, termination, illegal action
 
 ## Phase 5 — Initial deep-RL agent
 
-- [ ] `docs/rl-algorithm.md` — justify DQN
-- [ ] `rl/network.py` — small conv net, Q-head length 65
-- [ ] `rl/replay_buffer.py`
-- [ ] `rl/agent.py` — masked epsilon-greedy / greedy eval, save/load
-- [ ] `rl/trainer.py` — DQN loop, target net, metrics
-- [ ] Tests: network shapes, masking, buffer, checkpoint round-trip, trainer smoke
+- [x] `docs/rl-algorithm.md` — justify DQN
+- [x] `rl/network.py` — small conv net, Q-head length 65
+- [x] `rl/replay_buffer.py`
+- [x] `rl/agent.py` — masked epsilon-greedy / greedy eval, save/load
+- [x] `rl/trainer.py` — DQN loop, target net, metrics
+- [x] Tests: network shapes, masking, buffer, checkpoint round-trip, trainer smoke
 
 ## Phase 6 — Training vs fixed opponents
 

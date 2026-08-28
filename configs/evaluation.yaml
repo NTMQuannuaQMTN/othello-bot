@@ -1,0 +1,17 @@
+# Baseline evaluation configuration.
+seed: 20260828
+num_games: 150          # games per matchup (colours alternate)
+opening_plies: 4        # random opening moves to diversify deterministic matchups
+output_dir: experiments  # a timestamped sub-directory is created per run
+
+# Each matchup is [agent_a, agent_b]. Agent specs: random, greedy, heuristic,
+# minimax:<depth>. Stats are reported from agent_a's perspective.
+# (minimax:4 games take ~1.5s each in pure Python, so keep those matchups modest.)
+matchups:
+  - [greedy, random]
+  - [heuristic, random]
+  - [heuristic, greedy]
+  - [minimax:2, heuristic]
+  - [minimax:3, heuristic]
+  - [minimax:4, heuristic]
+  - [minimax:3, greedy]

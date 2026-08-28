@@ -1,0 +1,18 @@
+config_file: configs/evaluation.yaml
+num_games: 150
+seed: 20260828
+matchups:
+- - greedy
+  - random
+- - heuristic
+  - random
+- - heuristic
+  - greedy
+- - minimax:2
+  - heuristic
+- - minimax:3
+  - heuristic
+- - minimax:4
+  - heuristic
+- - minimax:3
+  - greedy

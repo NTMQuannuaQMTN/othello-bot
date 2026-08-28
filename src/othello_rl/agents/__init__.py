@@ -17,16 +17,24 @@ __all__ = [
 ]
 
 
-def make_agent(spec: str) -> Agent:
+def make_agent(spec, seed=None) -> Agent:
     """Build an agent from a short string spec used in configs/CLIs.
 
-    Examples: ``"random"``, ``"random:7"`` (seed), ``"greedy"``, ``"heuristic"``,
-    ``"minimax:3"`` (depth).
+    Examples: ``"random"``, ``"random:7"`` (explicit seed), ``"greedy"``,
+    ``"heuristic"``, ``"minimax:3"`` (depth).
+
+    If ``spec`` is already an :class:`Agent` it is returned unchanged; if it is a
+    zero-arg callable it is called. ``seed`` is used for a ``"random"`` spec that
+    does not carry its own ``:seed``.
     """
-    name, _, arg = spec.partition(":")
+    if isinstance(spec, Agent):
+        return spec
+    if callable(spec):
+        return spec()
+    name, _, arg = str(spec).partition(":")
     name = name.strip().lower()
     if name == "random":
-        return RandomAgent(seed=int(arg) if arg else None)
+        return RandomAgent(seed=int(arg) if arg else seed)
     if name == "greedy":
         return GreedyAgent()
     if name == "heuristic":
