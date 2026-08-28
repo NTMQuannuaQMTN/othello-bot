@@ -66,10 +66,11 @@ def track_checkpoints(paths: Sequence[Path],
         for j in range(i + 1, len(agents)):
             matches.append(play_match(agents[i], agents[j], num_games=round_robin_games,
                                       seed=seed + i * 100 + j, opening_plies=opening_plies))
-    for a in agents:
-        for bname, bspec in baselines.items():
+    for ai, a in enumerate(agents):
+        for bi, (bname, bspec) in enumerate(baselines.items()):
             matches.append(play_match(a, bspec, num_games=round_robin_games,
-                                      seed=seed + hash(a.name) % 997, opening_plies=opening_plies))
+                                      seed=seed + 7919 * (ai + 1) + 31 * (bi + 1),
+                                      opening_plies=opening_plies))
     elo = ratings_from_matches(matches, anchor="random")
     ratings = elo.leaderboard()
 

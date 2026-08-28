@@ -9,3 +9,5 @@
 {"phase": "train", "stage": "stage1_random", "env_steps": 60000, "train_steps": 29000, "episodes": 2068, "epsilon": 0.05, "mean_return_100": 0.19}
 {"phase": "eval", "stage": "stage1_random", "train_steps": 36500, "winrate_vs_random": 0.645, "disc_diff_vs_random": 6.27, "winrate_vs_greedy": 0.655, "disc_diff_vs_greedy": 6.37, "winrate_vs_heuristic": 0.02, "disc_diff_vs_heuristic": -34.72}
 {"phase": "train", "stage": "stage1_random", "env_steps": 75000, "train_steps": 36500, "episodes": 2586, "epsilon": 0.05, "mean_return_100": 0.0}
+{"phase": "eval", "stage": "stage1_random", "train_steps": 44000, "winrate_vs_random": 0.745, "disc_diff_vs_random": 12.18, "winrate_vs_greedy": 0.71, "disc_diff_vs_greedy": 11.15, "winrate_vs_heuristic": 0.11, "disc_diff_vs_heuristic": -29.06}
+{"phase": "train", "stage": "stage1_random", "env_steps": 90000, "train_steps": 44000, "episodes": 3104, "epsilon": 0.05, "mean_return_100": 0.2}
