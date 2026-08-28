@@ -15,6 +15,7 @@ venv/
 # Experiment outputs: keep small text/plot artifacts, drop logs & checkpoints.
 experiments/**
 !experiments/.gitkeep
+!experiments/RESULTS.md
 !experiments/**/
 !experiments/**/report.md
 !experiments/**/summary.md
