@@ -22,15 +22,16 @@ from .network import SmallOthelloNet, greedy_action, masked_q
 
 @dataclass
 class NetworkConfig:
-    channels: int = 64
+    channels: int = 48
     blocks: int = 3
     hidden: int = 128
     with_value_head: bool = True
+    norm: bool = False
 
     def build(self) -> SmallOthelloNet:
         return SmallOthelloNet(
             channels=self.channels, blocks=self.blocks, hidden=self.hidden,
-            with_value_head=self.with_value_head,
+            with_value_head=self.with_value_head, norm=self.norm,
         )
 
 

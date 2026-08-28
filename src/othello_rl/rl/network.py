@@ -20,23 +20,24 @@ NEG_INF = -1e9  # finite sentinel so masked softmax/backprop stay well-defined
 
 
 class ConvBlock(nn.Module):
-    def __init__(self, in_ch: int, out_ch: int):
+    def __init__(self, in_ch: int, out_ch: int, norm: bool = False):
         super().__init__()
-        self.conv = nn.Conv2d(in_ch, out_ch, 3, padding=1, bias=False)
-        self.bn = nn.BatchNorm2d(out_ch)
+        self.conv = nn.Conv2d(in_ch, out_ch, 3, padding=1, bias=not norm)
+        self.norm = nn.BatchNorm2d(out_ch) if norm else nn.Identity()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return torch.relu(self.bn(self.conv(x)))
+        return torch.relu(self.norm(self.conv(x)))
 
 
 class SmallOthelloNet(nn.Module):
-    def __init__(self, channels: int = 64, blocks: int = 3, hidden: int = 128,
-                 num_actions: int = NUM_ACTIONS, with_value_head: bool = True):
+    def __init__(self, channels: int = 48, blocks: int = 3, hidden: int = 128,
+                 num_actions: int = NUM_ACTIONS, with_value_head: bool = True,
+                 norm: bool = False):
         super().__init__()
         self.num_actions = num_actions
-        layers = [ConvBlock(3, channels)]
+        layers = [ConvBlock(3, channels, norm=norm)]
         for _ in range(blocks - 1):
-            layers.append(ConvBlock(channels, channels))
+            layers.append(ConvBlock(channels, channels, norm=norm))
         self.torso = nn.Sequential(*layers)
         self.flat = 8 * 8 * channels
         self.q_head = nn.Sequential(

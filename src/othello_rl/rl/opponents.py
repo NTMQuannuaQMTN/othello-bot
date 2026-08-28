@@ -21,9 +21,11 @@ Color = Union[int, str]  # BLACK, WHITE, or "random"
 
 class FixedOpponentEnv:
     def __init__(self, opponent: Union[str, Agent, List], learner_color: Color = "random",
-                 illegal_move_mode: str = "raise", seed: Optional[int] = None):
+                 illegal_move_mode: str = "raise", seed: Optional[int] = None,
+                 opening_plies: int = 0):
         self._opponent_spec = opponent
         self.learner_color = learner_color
+        self.opening_plies = int(opening_plies)
         self.env = OthelloEnv(illegal_move_mode=illegal_move_mode)
         self._rng = random.Random(seed)
         self.opponent: Agent = self._make_opponent()
@@ -31,6 +33,8 @@ class FixedOpponentEnv:
 
     def _make_opponent(self) -> Agent:
         spec = self._opponent_spec
+        if hasattr(spec, "sample"):  # an OpponentPool-like object
+            return spec.sample(self._rng)
         if isinstance(spec, list):  # sample from a list of specs each episode
             spec = self._rng.choice(spec)
         return make_agent(spec, seed=self._rng.randrange(2 ** 31))
@@ -46,8 +50,22 @@ class FixedOpponentEnv:
             self.learner_is = int(self.learner_color)
 
         obs, info = self.env.reset(seed=seed)
+        obs, info = self._random_opening(obs, info)
         obs, info, _, _ = self._play_opponent_until_learner(obs, info)
         info = {**info, "learner_color": self.learner_is}
+        return obs, info
+
+    def _random_opening(self, obs, info):
+        """Play ``opening_plies`` uniformly-random legal plies (both sides) so the
+        learner sees a diverse set of start positions and generalises."""
+        n = self._rng.randint(0, self.opening_plies) if self.opening_plies else 0
+        for _ in range(n):
+            if self.env.state.is_terminal():
+                break
+            legal = np.nonzero(info["action_mask"])[0]
+            obs, _, terminated, truncated, info = self.env.step(int(self._rng.choice(legal)))
+            if terminated or truncated:
+                break
         return obs, info
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:

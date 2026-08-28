@@ -34,6 +34,7 @@ def build_curriculum(cfg, steps_scale: float, only_stages) -> CurriculumConfig:
             name=s["name"], opponent=s["opponent"],
             env_steps=max(1, int(s["env_steps"] * steps_scale)),
             learner_color=s.get("learner_color", "random"),
+            opening_plies=int(s.get("opening_plies", 4)),
         ))
     ev = cfg.get("eval", {})
     return CurriculumConfig(

@@ -5,6 +5,7 @@ from .agent import AgentMeta, DQNAgent, NetworkConfig
 from .opponents import FixedOpponentEnv
 from .trainer import DQNConfig, DQNTrainer, TrainMetrics
 from .curriculum import CurriculumConfig, Stage, run_curriculum
+from .self_play import OpponentPool, SelfPlayConfig, run_self_play
 
 __all__ = [
     "SmallOthelloNet",
@@ -22,4 +23,7 @@ __all__ = [
     "run_curriculum",
     "CurriculumConfig",
     "Stage",
+    "OpponentPool",
+    "SelfPlayConfig",
+    "run_self_play",
 ]

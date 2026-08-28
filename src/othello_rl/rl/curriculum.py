@@ -20,6 +20,7 @@ class Stage:
     opponent: Union[str, List[str]]          # spec or list of specs (sampled per episode)
     env_steps: int
     learner_color: str = "random"            # BLACK / WHITE / "random"
+    opening_plies: int = 4                   # random opening plies for start-state diversity
 
 
 @dataclass
@@ -64,7 +65,8 @@ def run_curriculum(agent: DQNAgent, cfg: CurriculumConfig, run_dir: str | Path,
     total_env_steps = 0
     for stage_idx, stage in enumerate(cfg.stages):
         env = FixedOpponentEnv(stage.opponent, learner_color=stage.learner_color,
-                               seed=seed + 101 * (stage_idx + 1))
+                               seed=seed + 101 * (stage_idx + 1),
+                               opening_plies=stage.opening_plies)
         if trainer is None:
             trainer = DQNTrainer(env, agent, cfg.dqn, seed=seed)
         else:

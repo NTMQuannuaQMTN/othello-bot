@@ -1,52 +1,54 @@
 # DQN curriculum training configuration.
+# Tuned for CPU-only (pure-Python engine + small conv net, ~100 env steps/s).
 seed: 20260828
 device: cpu
 tag: dqn_curriculum
 
 network:
-  channels: 64
-  blocks: 3
-  hidden: 128
+  channels: 32
+  blocks: 2
+  hidden: 96
   with_value_head: true
+  norm: false
 
 dqn:
   gamma: 0.99
   lr: 0.001
-  batch_size: 256
+  batch_size: 128
   buffer_capacity: 100000
   warmup_steps: 2000
-  train_freq: 1
-  target_sync: 1000
+  train_freq: 2          # one gradient step per 2 env steps
+  target_sync: 750       # in gradient steps
   grad_clip: 10.0
   double_dqn: true
   epsilon_start: 1.0
   epsilon_end: 0.05
   epsilon_decay_steps: 40000
 
-# Periodic evaluation during training.
 eval:
   opponents:
     random: random
     greedy: greedy
     heuristic: heuristic
-  games: 120
-  every: 5000
+  games: 100
+  every: 15000
   seed: 12345
 
-checkpoint_every: 20000
+checkpoint_every: 30000
 
-# Curriculum. Each stage trains `env_steps` plies against `opponent`
-# (a single spec or a list sampled per episode).
 stages:
   - name: stage1_random
     opponent: random
     env_steps: 120000
     learner_color: random
+    opening_plies: 4
   - name: stage2_random_greedy
     opponent: [random, greedy]
     env_steps: 120000
     learner_color: random
+    opening_plies: 4
   - name: stage3_heuristic
     opponent: [random, greedy, heuristic]
-    env_steps: 160000
+    env_steps: 140000
     learner_color: random
+    opening_plies: 4

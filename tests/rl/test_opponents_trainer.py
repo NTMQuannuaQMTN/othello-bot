@@ -11,6 +11,17 @@ def _agent():
     return DQNAgent(NetworkConfig(channels=16, blocks=2, hidden=32), seed=0)
 
 
+def test_opening_plies_diversify_start_states():
+    seen = set()
+    env = FixedOpponentEnv("random", learner_color=BLACK, seed=0, opening_plies=6)
+    for _ in range(15):
+        obs, info = env.reset()
+        seen.add(obs[:2].tobytes())
+        # after opening + opponent replies it is the learner's turn (or terminal)
+        assert env.env.state.player == BLACK or env.env.state.is_terminal()
+    assert len(seen) > 5  # genuinely varied openings
+
+
 def test_fixed_opponent_env_gives_learner_turn_and_perspective():
     env = FixedOpponentEnv("random", learner_color=WHITE, seed=0)
     obs, info = env.reset(seed=0)
