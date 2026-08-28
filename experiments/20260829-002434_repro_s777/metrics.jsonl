@@ -1,0 +1,1 @@
+{"phase": "eval", "stage": "<untrained>", "env_steps": 0, "train_steps": 0, "winrate_vs_random": 0.27, "disc_diff_vs_random": -12.64, "winrate_vs_greedy": 0.105, "disc_diff_vs_greedy": -22.05, "winrate_vs_heuristic": 0.01, "disc_diff_vs_heuristic": -41.33}

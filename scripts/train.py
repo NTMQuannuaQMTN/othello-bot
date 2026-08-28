@@ -82,6 +82,8 @@ def main(argv=None) -> int:
     ap.add_argument("--steps-scale", type=float, default=1.0,
                     help="multiply every stage's env_steps (for quick smoke runs)")
     ap.add_argument("--stages", nargs="*", default=None, help="only run these stage names")
+    ap.add_argument("--seed", type=int, default=None, help="override config seed")
+    ap.add_argument("--tag", default=None, help="override run tag")
     ap.add_argument("--out", default="experiments")
     ap.add_argument("--progress", choices=["auto", "on", "off"], default="auto",
                     help="progress bar: auto (bar only on a terminal), on, or off")
@@ -89,10 +91,10 @@ def main(argv=None) -> int:
     progress = {"auto": "auto", "on": True, "off": False}[args.progress]
 
     cfg = load_config(args.config)
-    seed = int(cfg.get("seed", 0))
+    seed = args.seed if args.seed is not None else int(cfg.get("seed", 0))
     seed_everything(seed)
 
-    run_dir = create_run_dir(args.out, cfg.get("tag", "train"))
+    run_dir = create_run_dir(args.out, args.tag or cfg.get("tag", "train"))
     dump_config(dict(cfg), run_dir / "resolved_config.yaml")
 
     net_cfg = NetworkConfig(**cfg.get("network", {}))

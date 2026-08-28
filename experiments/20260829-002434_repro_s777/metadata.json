@@ -1,0 +1,92 @@
+{
+  "created": "2026-08-29T00:24:34",
+  "git_commit": "b559b6645d20b22fdcfcfc1665b9e68859cf340c",
+  "versions": {
+    "python": "3.9.6",
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "torch": "2.8.0",
+    "numpy": "2.0.2"
+  },
+  "argv": [
+    "scripts/train.py",
+    "--config",
+    "configs/train.yaml",
+    "--stages",
+    "stage1_random",
+    "--seed",
+    "777",
+    "--tag",
+    "repro_s777"
+  ],
+  "config": {
+    "seed": 20260828,
+    "device": "cpu",
+    "tag": "dqn_curriculum",
+    "network": {
+      "channels": 32,
+      "blocks": 2,
+      "hidden": 96,
+      "with_value_head": true,
+      "norm": false
+    },
+    "dqn": {
+      "gamma": 0.99,
+      "lr": 0.001,
+      "batch_size": 128,
+      "buffer_capacity": 100000,
+      "warmup_steps": 2000,
+      "train_freq": 2,
+      "target_sync": 750,
+      "grad_clip": 10.0,
+      "double_dqn": true,
+      "epsilon_start": 1.0,
+      "epsilon_end": 0.05,
+      "epsilon_decay_steps": 40000
+    },
+    "eval": {
+      "opponents": {
+        "random": "random",
+        "greedy": "greedy",
+        "heuristic": "heuristic"
+      },
+      "games": 100,
+      "every": 15000,
+      "seed": 12345
+    },
+    "checkpoint_every": 30000,
+    "stages": [
+      {
+        "name": "stage1_random",
+        "opponent": "random",
+        "env_steps": 120000,
+        "learner_color": "random",
+        "opening_plies": 4
+      },
+      {
+        "name": "stage2_random_greedy",
+        "opponent": [
+          "random",
+          "greedy"
+        ],
+        "env_steps": 120000,
+        "learner_color": "random",
+        "opening_plies": 4
+      },
+      {
+        "name": "stage3_heuristic",
+        "opponent": [
+          "random",
+          "greedy",
+          "heuristic"
+        ],
+        "env_steps": 140000,
+        "learner_color": "random",
+        "opening_plies": 4
+      }
+    ]
+  },
+  "steps_scale": 1.0,
+  "stages_run": [
+    "stage1_random"
+  ]
+}
