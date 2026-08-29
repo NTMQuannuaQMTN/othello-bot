@@ -35,10 +35,10 @@ function renderBoard(grid, opts = {}) {
       if (legal.has(i)) cell.classList.add("legal");
       if (last.has(i)) cell.classList.add("last");
       if (best === i) cell.classList.add("bestmove");
-      if (glyphs[i]) {
+      if (glyphs[i] && glyphs[i].glyph) {
         const g = document.createElement("span");
         g.className = "glyph label " + glyphs[i].label;
-        g.textContent = glyphs[i].glyph || glyphs[i].label[0];
+        g.textContent = glyphs[i].glyph;
         cell.appendChild(g);
       }
       if (legal.has(i) && opts.onMove) cell.onclick = () => opts.onMove(i);
@@ -196,11 +196,13 @@ const Analysis = {
   renderList() {
     const ol = $("#analysis-list"); ol.innerHTML = "";
     const s = this.data.summary;
+    const ORDER = ["Blunder", "Mistake", "Inaccuracy", "Good", "Excellent", "Best"];
     $("#analysis-summary").innerHTML = ["black", "white"].map((side) => {
       const c = s[side] || {};
-      const parts = Object.entries(c).map(([k, v]) => `<b>${v}</b> ${k}`).join(", ");
-      return `${side === "black" ? "⚫" : "⚪"} ${parts || "—"}`;
-    }).join("&nbsp;&nbsp;·&nbsp;&nbsp;");
+      const parts = ORDER.filter((k) => c[k])
+        .map((k) => `<b class="label ${k}">${c[k]}</b> ${k}`).join("  ");
+      return `<div>${side === "black" ? "⚫ Black" : "⚪ White"}: ${parts || "—"}</div>`;
+    }).join("");
     this.data.plies.forEach((p) => {
       const li = document.createElement("li");
       li.dataset.pos = p.ply + 1;
@@ -278,7 +280,17 @@ $("#reset-bot").onclick = async () => {
   await refreshBot();
 };
 
+/* deep links:  ?analyse=f5d6c3   or   #analysis   (Lichess-style shareable analysis) */
 (async () => {
   await refreshBot();
   await Play.newGame();
+  const params = new URLSearchParams(location.search);
+  const line = params.get("analyse") || params.get("analysis");
+  if (line) {
+    switchTab("analysis");
+    $("#transcript").value = line;
+    await Analysis.run({ transcript: line });
+  } else if (location.hash === "#analysis") {
+    switchTab("analysis");
+  }
 })();

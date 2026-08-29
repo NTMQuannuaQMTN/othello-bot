@@ -230,7 +230,7 @@ class OthelloBot:
             ranked = sorted(legal, key=lambda a: -q[a])
             v = float(q[ranked[0]])
             wp_stm = _winprob(v)
-            wp_black = wp_stm if board.player == BLACK else 1.0 - wp_stm
+            wp_black = _eval_black(self, board)  # blended, for display
             moves = [{
                 "action": int(a),
                 "san": _san(a),
@@ -513,10 +513,22 @@ def _san(action: int) -> str:
 
 
 def _eval_black(bot: "OthelloBot", board: Board) -> float:
+    """Win probability for BLACK, for the eval graph.
+
+    The DQN's value estimates are optimistic and low-variance (V(s) is ~0.65 for
+    whoever is to move, regardless of who is actually ahead), which on its own
+    produces a meaningless per-ply zig-zag. So the graph blends the bot's estimate
+    with the same fast positional score used to grade moves.
+    """
     if board.is_terminal():
         w = board.winner()
         return 1.0 if w == BLACK else (0.0 if w == WHITE else 0.5)
     q, _ = bot._q_values(board)
     v = float(np.max(q[np.isfinite(q)]))
-    wp = _winprob(v)
-    return wp if board.player == BLACK else 1.0 - wp
+    bot_wp = _winprob(v)
+    bot_wp_black = bot_wp if board.player == BLACK else 1.0 - bot_wp
+
+    h = _heval(board.array, BLACK, _HW)  # signed: + = good for black
+    h_wp_black = float(np.clip(0.5 + 0.5 * np.tanh(h / 22.0), 0.0, 1.0))
+
+    return 0.35 * bot_wp_black + 0.65 * h_wp_black
