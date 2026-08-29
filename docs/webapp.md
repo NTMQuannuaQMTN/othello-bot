@@ -1,12 +1,21 @@
 # Web app — play, fine-tune, analyse
 
-```
-python3 scripts/serve.py --config configs/webapp.yaml
-# open http://127.0.0.1:8000
+**Backend** = Python JSON API (`http.server`, no extra deps) — bot inference,
+analysis, fine-tuning. **Frontend** = React + Vite in `web/`.
+
+```bash
+# dev (hot reload)
+python3 scripts/serve.py --config configs/webapp.yaml     # terminal 1  -> API on :8000
+cd web && npm install && npm run dev                      # terminal 2  -> :5173 (proxies /api)
+#   (or: cd web && npm run dev:all   — runs both)
+
+# production
+cd web && npm run build          # -> web/dist
+python3 scripts/serve.py         # serves web/dist on http://127.0.0.1:8000
 ```
 
-Zero extra dependencies — the backend is Python's `http.server`, the frontend is
-vanilla HTML/CSS/JS in `src/othello_rl/webapp/static/`.
+If `web/dist` isn't built, `scripts/serve.py` still runs the API and serves a
+short "how to build the front end" page at `/`.
 
 ## Play tab
 

@@ -10,6 +10,12 @@ dist/
 *.pth
 !models/*.pt
 webapp_state/
+
+# web front end (Vite + React)
+web/node_modules/
+web/dist/
+web/.vite/
+npm-debug.log*
 runs/
 .venv/
 venv/

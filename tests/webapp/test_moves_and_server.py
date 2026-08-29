@@ -63,11 +63,20 @@ def _call(base, path, body=None):
         return json.loads(r.read())
 
 
-def test_index_and_static(server):
+def test_index_serves_html(server):
+    # serves web/dist/index.html when the React app is built, otherwise a
+    # fallback info page — either way it's HTML with a mounting point.
     with urllib.request.urlopen(server + "/") as r:
-        assert b"<title>" in r.read()
-    with urllib.request.urlopen(server + "/static/app.js") as r:
-        assert b"api" in r.read()
+        body = r.read()
+    assert body.lstrip().lower().startswith(b"<!doctype html")
+    assert b'id="root"' in body or b"npm run" in body
+
+
+def test_unknown_path_spa_fallback(server):
+    # client-side routes fall back to index.html (or the info page)
+    with urllib.request.urlopen(server + "/some/deep/route") as r:
+        assert r.status == 200
+        assert r.read().lstrip().lower().startswith(b"<!doctype html")
 
 
 def test_play_and_analyse_flow(server):

@@ -10,9 +10,12 @@ AlphaZero-style upgrade (`docs/alphazero-plan.md`).
 None in flight.
 
 ## Phase 10 — Web app (play / fine-tune / analysis)
-- `scripts/serve.py` → zero-dependency web app (`http.server` + vanilla JS).
+- Python JSON API (`scripts/serve.py`, stdlib `http.server`) + a **React + Vite**
+  front end in `web/` (`npm run dev` proxies `/api` to the API; `npm run build`
+  emits `web/dist` which the API server serves itself).
 - **Play**: full game vs the bot; **Analysis**: Lichess-style eval graph +
-  per-move Best/Inaccuracy/Mistake/Blunder labels + suggested moves.
+  per-move Best/Inaccuracy/Mistake/Blunder labels + suggested moves +
+  `?analyse=<transcript>` deep links.
 - **Fine-tune from a game**: grades each bot move (bot win-prob regret + 1-ply
   positional check), builds DQN transitions with the game result + shaping
   (hard negative for blunders, positive for best), trains on an anchored replay
@@ -44,7 +47,7 @@ None in flight.
 All results: `experiments/RESULTS.md`.
 
 ## Test status
-`python3 -m pytest` → 134 passed.
+`python3 -m pytest` → 135 passed.
 
 ## Known issues
 - Python 3.9.6 only; deps `--user`; run `python3 -m pytest`.

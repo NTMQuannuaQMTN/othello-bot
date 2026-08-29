@@ -120,9 +120,11 @@ pass, and the full suite is green.
 - [x] Fine-tune: game transitions + shaping + anchored replay buffer + guardrail rollback
 - [x] `webapp/session.py` in-memory human-vs-bot game
 - [x] `webapp/moves.py` transcript / move-list parser + position replay
-- [x] `webapp/server.py` zero-dependency JSON API + static server
-- [x] Frontend: board UI, Play tab, Analysis tab (eval graph, per-move labels, nav)
+- [x] `webapp/server.py` zero-dependency JSON API (serves `web/dist` or a fallback page)
+- [x] `web/` React + Vite front end: Board / BoardArea / PlayPanel / AnalysisPanel
+      (eval graph, per-move labels, click-to-navigate), `?analyse=` deep link
+- [x] `npm run dev` (Vite proxies `/api` → :8000), `npm run build`, `npm run dev:all`
 - [x] `scripts/serve.py` + `configs/webapp.yaml`
 - [x] `scripts/bot_cli.py` line protocol for external harnesses (`genmove` / `eval`)
-- [x] `models/othello_bot_v1.pt` bundled bot + `docs/webapp.md`
-- [x] Tests: bot_service, moves, HTTP API, serve/CLI smoke
+- [x] `models/othello_bot_v1.pt` bundled bot + `docs/webapp.md` + `web/README.md`
+- [x] Tests: bot_service, moves, HTTP API, SPA fallback, serve/CLI smoke

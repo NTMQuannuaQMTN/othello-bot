@@ -47,7 +47,14 @@ python3 scripts/serve.py     --config configs/webapp.yaml    # web app -> http:/
 
 ## Web app
 
-`scripts/serve.py` runs a zero-dependency web app (`docs/webapp.md`):
+Python JSON API + a React (Vite) front end in `web/` — see `docs/webapp.md`:
+
+```bash
+python3 scripts/serve.py --config configs/webapp.yaml   # API on :8000
+cd web && npm install && npm run dev                    # React dev server on :5173
+```
+
+(or `cd web && npm run build`, then `python3 scripts/serve.py` serves the bundle itself)
 
 - **Play** against the bot; after a game, **fine-tune** it from your moves —
   the bot's good moves are reinforced and its blunders penalised (graded by a
@@ -79,7 +86,8 @@ src/othello_rl/
   rl/           network.py replay_buffer.py agent.py trainer.py opponents.py curriculum.py self_play.py
   evaluation/   tournament.py metrics.py elo.py harness.py tracking.py report.py
   utils/        config.py seed.py logging.py experiment.py plots.py progress.py
-  webapp/       bot_service.py session.py moves.py server.py static/
+  webapp/       bot_service.py session.py moves.py server.py   (Python JSON API)
+web/            React + Vite front end (npm run dev / build)
 scripts/        train.py selfplay.py evaluate.py track.py play.py serve.py bot_cli.py
 models/         othello_bot_v1.pt          # the bundled bot
 tests/          mirrors src/

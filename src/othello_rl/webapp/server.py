@@ -28,17 +28,35 @@ from .bot_service import OthelloBot
 from .moves import parse_game, replay_positions
 from .session import GameSession
 
-STATIC_DIR = Path(__file__).parent / "static"
+#: Vite build output (``cd web && npm run build``). Overridable via AppState.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_STATIC_DIR = _REPO_ROOT / "web" / "dist"
+
 _CONTENT_TYPES = {".html": "text/html", ".js": "application/javascript",
-                  ".css": "text/css", ".json": "application/json",
-                  ".svg": "image/svg+xml", ".ico": "image/x-icon"}
+                  ".mjs": "application/javascript", ".css": "text/css",
+                  ".json": "application/json", ".svg": "image/svg+xml",
+                  ".ico": "image/x-icon", ".png": "image/png", ".woff2": "font/woff2",
+                  ".map": "application/json"}
+
+_FALLBACK_PAGE = b"""<!doctype html><meta charset=utf-8>
+<title>OthelloRL API</title>
+<style>body{font:15px/1.5 system-ui;margin:40px;max-width:640px;color:#222}code{background:#eee;padding:2px 5px;border-radius:4px}</style>
+<h1>Othello<span style=color:#6ea8fe>RL</span> &mdash; API is running</h1>
+<p>The React front end hasn't been built yet. Either:</p>
+<pre><code>cd web && npm install && npm run dev</code></pre>
+<p>&hellip;and open the Vite dev server it prints (it proxies <code>/api</code> here), or</p>
+<pre><code>cd web && npm run build</code></pre>
+<p>&hellip;then reload this page (this server serves <code>web/dist</code>).</p>
+<p>The JSON API itself is live now &mdash; e.g. <a href="/api/bot">/api/bot</a>.</p>
+"""
 
 
 class AppState:
-    def __init__(self, bot: OthelloBot):
+    def __init__(self, bot: OthelloBot, static_dir: Path = None):
         self.bot = bot
         self.session = GameSession(bot)
         self.lock = threading.Lock()
+        self.static_dir = Path(static_dir) if static_dir else DEFAULT_STATIC_DIR
 
 
 def make_handler(app: AppState):
@@ -58,6 +76,11 @@ def make_handler(app: AppState):
     @route("GET /api/state")
     def _state(_):
         return app.session.state()
+
+    @route("GET /api/eval")
+    def _eval(_):
+        """Bot's read of the current game position (for the eval bar)."""
+        return app.bot.evaluate_position(app.session.board)
 
     @route("POST /api/new")
     def _new(body):
@@ -120,24 +143,35 @@ def make_handler(app: AppState):
             self.end_headers()
             self.wfile.write(payload)
 
-        def _send_file(self, path: Path):
-            if not path.is_file() or STATIC_DIR not in path.resolve().parents:
-                self._send_json({"error": "not found"}, 404)
-                return
-            data = path.read_bytes()
-            self.send_response(200)
-            self.send_header("Content-Type", _CONTENT_TYPES.get(path.suffix, "application/octet-stream"))
+        def _send_bytes(self, data: bytes, content_type: str, status: int = 200):
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
-            self.wfile.write(data)
+            if self.command != "HEAD":
+                self.wfile.write(data)
+
+        def _serve_static(self, url_path: str):
+            static_dir = app.static_dir
+            index = static_dir / "index.html"
+            if not index.is_file():
+                self._send_bytes(_FALLBACK_PAGE, "text/html")
+                return
+            rel = url_path.lstrip("/") or "index.html"
+            target = (static_dir / rel).resolve()
+            if static_dir.resolve() not in target.parents and target != index.resolve():
+                target = index  # SPA fallback for unknown client-side routes
+            if not target.is_file():
+                target = index
+            self._send_bytes(
+                target.read_bytes(),
+                _CONTENT_TYPES.get(target.suffix, "application/octet-stream"),
+            )
 
         def _dispatch(self, method: str):
             path = self.path.split("?", 1)[0]
-            if method == "GET" and path in ("/", "/index.html"):
-                self._send_file(STATIC_DIR / "index.html")
-                return
-            if method == "GET" and path.startswith("/static/"):
-                self._send_file(STATIC_DIR / path[len("/static/"):])
+            if method == "GET" and not path.startswith("/api/"):
+                self._serve_static(path)
                 return
             key = f"{method} {path}"
             handler = routes.get(key)
@@ -191,7 +225,8 @@ def _json_default(o):
     return str(o)
 
 
-def serve(bot: OthelloBot, host: str = "127.0.0.1", port: int = 8000):
-    app = AppState(bot)
+def serve(bot: OthelloBot, host: str = "127.0.0.1", port: int = 8000,
+          static_dir=None):
+    app = AppState(bot, static_dir=static_dir)
     httpd = ThreadingHTTPServer((host, port), make_handler(app))
     return httpd

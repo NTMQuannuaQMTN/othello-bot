@@ -1,6 +1,9 @@
-# Web app configuration.
+# Web app configuration (the Python JSON API).
+# The React front end lives in web/ — `cd web && npm run dev` (dev, proxies /api
+# here) or `npm run build` (this server then serves web/dist).
 host: 127.0.0.1
 port: 8000
+static_dir: web/dist        # served when built; falls back to an info page
 
 # The bot the site plays / analyses with. On first run it is copied into
 # `state_dir/current.pt`; subsequent runs resume from there unless --fresh.

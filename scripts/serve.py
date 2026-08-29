@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
-"""Run the Othello bot web app (play + fine-tune + Lichess-style analysis).
+"""Run the Othello bot JSON API (play + fine-tune + Lichess-style analysis).
 
-    python3 scripts/serve.py --config configs/webapp.yaml
-    open http://127.0.0.1:8000
+The React front end is in `web/`:
+
+    # dev (hot reload; proxies /api to this server):
+    python3 scripts/serve.py --config configs/webapp.yaml     # terminal 1
+    cd web && npm install && npm run dev                      # terminal 2  -> :5173
+
+    # or build once and let this server serve it:
+    cd web && npm run build
+    python3 scripts/serve.py                                  # -> http://127.0.0.1:8000
 """
 from __future__ import annotations
 
@@ -33,11 +40,13 @@ def main(argv=None) -> int:
     seed_everything(0)
 
     cfg = load_config(args.config)
+    _root = Path(__file__).resolve().parents[1]
     host = args.host or cfg.get("host", "127.0.0.1")
     port = args.port or int(cfg.get("port", 8000))
     base_ckpt = Path(args.checkpoint or cfg.get("checkpoint", "models/othello_bot_v1.pt"))
     state_dir = Path(cfg.get("state_dir", "webapp_state"))
     state_dir.mkdir(parents=True, exist_ok=True)
+    static_dir = _root / cfg.get("static_dir", "web/dist")
 
     current = state_dir / "current.pt"
     if args.fresh or not current.exists():
@@ -49,9 +58,12 @@ def main(argv=None) -> int:
                           state_dir=str(state_dir), ft_config=ft)
     print(f"bot: {bot.info()}")
 
-    httpd = serve(bot, host=host, port=port)
+    httpd = serve(bot, host=host, port=port, static_dir=static_dir)
     url = f"http://{host}:{port}"
-    print(f"\n  Othello bot web app running at {url}\n  (Ctrl-C to stop)\n")
+    built = (static_dir / "index.html").is_file()
+    print(f"\n  Othello bot API on {url}"
+          f"\n  {'serving web/dist' if built else 'front end not built — run: cd web && npm run dev'}"
+          f"\n  (Ctrl-C to stop)\n")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
