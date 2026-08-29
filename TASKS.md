@@ -122,7 +122,10 @@ pass, and the full suite is green.
 - [x] `webapp/moves.py` transcript / move-list parser + position replay
 - [x] `webapp/server.py` zero-dependency JSON API (serves `web/dist` or a fallback page)
 - [x] `web/` React + Vite front end: Board / BoardArea / PlayPanel / AnalysisPanel
-      (eval graph, per-move labels, click-to-navigate), `?analyse=` deep link
+- [x] Analysis = interactive board (Lichess style): play moves on the board,
+      legal-move dots, live per-position eval + "bot likes" lines, dashed best
+      move, ⏮◀▶⏭ / arrow-key / graph / move-list nav, take-back, `?analyse=` deep link
+- [x] `bot_service.analyse_line` + `GET /api/eval` back the interactive board
 - [x] `npm run dev` (Vite proxies `/api` → :8000), `npm run build`, `npm run dev:all`
 - [x] `scripts/serve.py` + `configs/webapp.yaml`
 - [x] `scripts/bot_cli.py` line protocol for external harnesses (`genmove` / `eval`)

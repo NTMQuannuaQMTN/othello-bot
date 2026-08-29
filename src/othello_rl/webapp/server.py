@@ -23,9 +23,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Dict
 
-from othello_rl.environment.board import Board
 from .bot_service import OthelloBot
-from .moves import parse_game, replay_positions
+from .moves import parse_game
 from .session import GameSession
 
 #: Vite build output (``cd web && npm run build``). Overridable via AppState.
@@ -98,18 +97,7 @@ def make_handler(app: AppState):
     @route("POST /api/analyse")
     def _analyse(body):
         actions = parse_game(body if body else app.session.state())
-        analyses = app.bot.analyse_game(actions, top_k=int(body.get("top_k", 3)))
-        start_eval = app.bot.evaluate_position(Board.initial())["winprob_black"]
-        graph = [{"ply": -1, "eval_black": start_eval}]
-        graph += [{"ply": a.ply, "eval_black": a.eval_after_black} for a in analyses]
-        return {
-            "n_moves": len(actions),
-            "actions": actions,
-            "plies": [asdict(a) for a in analyses],
-            "positions": replay_positions(actions),
-            "eval_graph": graph,
-            "summary": _summary(analyses),
-        }
+        return app.bot.analyse_line(actions, top_k=int(body.get("top_k", 3)))
 
     @route("POST /api/finetune")
     def _finetune(body):
@@ -205,13 +193,6 @@ def make_handler(app: AppState):
             self._dispatch("POST")
 
     return Handler
-
-
-def _summary(analyses) -> dict:
-    counts: Dict[str, Dict[str, int]] = {"black": {}, "white": {}}
-    for a in analyses:
-        counts[a.side][a.label] = counts[a.side].get(a.label, 0) + 1
-    return counts
 
 
 def _json_default(o):

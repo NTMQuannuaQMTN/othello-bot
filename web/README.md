@@ -36,7 +36,9 @@ src/
     BoardArea.jsx   board + eval bar + status line
     EvalBar/Graph   the win-probability bar and the game eval graph
     PlayPanel.jsx   play a game, then fine-tune the bot from it
-    AnalysisPanel.jsx  Lichess-style move-by-move review (?analyse=<transcript> deep link)
+    AnalysisPanel.jsx  interactive Lichess-style analysis board — play moves on
+                       the board, the bot evaluates each position live
+                       (?analyse=<transcript> deep link)
     BotBadge / FineTuneResult
 ```
 

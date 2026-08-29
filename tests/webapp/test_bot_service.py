@@ -73,6 +73,34 @@ def test_analyse_game_structure(bot):
         assert len(a.top_moves) >= 1
 
 
+def test_analyse_line_navigation_payload(bot):
+    from othello_rl.webapp.moves import parse_game
+
+    # empty line -> just the start position, with the bot's opening suggestions
+    d0 = bot.analyse_line([])
+    assert len(d0["positions"]) == 1 and d0["plies"] == []
+    p0 = d0["positions"][0]
+    assert p0["turn"] == "black" and not p0["terminal"]
+    assert sorted(p0["legal_actions"]) == [19, 26, 37, 44]
+    assert len(p0["eval"]["moves"]) == 4
+    assert p0["eval"]["moves"] == sorted(p0["eval"]["moves"], key=lambda m: -m["value"])
+
+    acts = parse_game("c4c3f5b4b3")
+    d = bot.analyse_line(acts)
+    assert len(d["positions"]) == len(acts) + 1
+    assert len(d["eval_graph"]) == len(acts) + 1
+    assert len(d["plies"]) == len(acts)
+    # every position carries a legal-move list + eval for the side to move
+    for i, pos in enumerate(d["positions"]):
+        assert "grid" in pos and "eval" in pos
+        if not pos["terminal"]:
+            assert len(pos["legal_actions"]) >= 1
+    # the played move at each ply is recoverable and graded
+    for ply, a in zip(d["plies"], acts):
+        assert ply["played"] == a
+        assert ply["label"] in ("Best", "Excellent", "Good", "Inaccuracy", "Mistake", "Blunder")
+
+
 def test_analyse_flags_a_clear_mistake(bot):
     # black can take corner a1; playing the b2 X-square instead should grade worse
     from tests.environment.conftest import make_board

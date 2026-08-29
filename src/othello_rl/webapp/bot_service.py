@@ -17,7 +17,7 @@ import json
 import random
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -277,6 +277,78 @@ class OthelloBot:
                 ))
                 state = nxt
             return out
+
+    def _position_payload(self, state: Board) -> dict:
+        b, w = state.scores()
+        moves = state.legal_moves()
+        if moves:
+            legal = [r * 8 + c for r, c in moves]
+        elif not state.is_terminal():
+            legal = [PASS_ACTION]
+        else:
+            legal = []
+        return {
+            "grid": [[int(state.array[r, c]) for c in range(8)] for r in range(8)],
+            "turn": _side(state.player),
+            "terminal": state.is_terminal(),
+            "winner": ((_side(state.winner()) if state.winner() else "draw")
+                       if state.is_terminal() else None),
+            "legal_actions": legal,
+            "score": {"black": b, "white": w},
+            "eval": self.evaluate_position(state),
+        }
+
+    def analyse_line(self, actions: Sequence[int], top_k: int = 3) -> dict:
+        """Analysis of a line for the interactive (Lichess-style) analysis board:
+        one position payload per ply boundary (index 0 = start), plus the grade of
+        every played move, an eval graph and a per-side summary."""
+        with self._lock:
+            state = Board.initial()
+            positions = [self._position_payload(state)]
+            plies: List[MoveAnalysis] = []
+            for ply, a in enumerate(actions):
+                a = int(a)
+                if state.is_terminal():
+                    break
+                if a == PASS_ACTION or not state.legal_moves():
+                    state = state.apply(None)
+                    positions.append(self._position_payload(state))
+                    continue
+                g = self.grade_move(state, a)
+                q = g["q"]
+                ranked = sorted(g["legal"], key=lambda x: -q[x])
+                best = g["bot_best"]
+                nxt = state.apply(a)
+                pos = self._position_payload(nxt)
+                positions.append(pos)
+                plies.append(MoveAnalysis(
+                    ply=ply, side=_side(state.player), played=a, played_san=_san(a),
+                    played_value=float(q[a]), played_winprob=_winprob(float(q[a])),
+                    best=int(best), best_san=_san(int(best)),
+                    best_value=float(q[best]), best_winprob=_winprob(float(q[best])),
+                    coach_best_san=_san(g["coach_best"]),
+                    bot_drop=g["bot_drop"], coach_drop=g["coach_drop"],
+                    drop=g["regret"], label=g["label"], glyph=g["glyph"],
+                    eval_after_black=pos["eval"]["winprob_black"],
+                    top_moves=[{"action": int(x), "san": _san(int(x)),
+                                "value": float(q[x]), "winprob": _winprob(float(q[x]))}
+                               for x in ranked[:top_k]],
+                ))
+                state = nxt
+
+            summary: Dict[str, Dict[str, int]] = {"black": {}, "white": {}}
+            for p in plies:
+                summary[p.side][p.label] = summary[p.side].get(p.label, 0) + 1
+            graph = [{"ply": i - 1, "eval_black": positions[i]["eval"]["winprob_black"]}
+                     for i in range(len(positions))]
+            return {
+                "actions": [int(a) for a in actions[:len(positions) - 1]],
+                "n_moves": len(positions) - 1,  # plies incl. passes
+                "positions": positions,
+                "plies": [asdict(p) for p in plies],
+                "eval_graph": graph,
+                "summary": summary,
+            }
 
     # -- fine-tuning -----------------------------------------------------
     def _ensure_buffer(self) -> ReplayBuffer:

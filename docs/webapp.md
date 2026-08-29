@@ -25,16 +25,22 @@ your last move / the bot's last move is outlined. When the game ends you can hit
 
 ## Analysis tab (Lichess-analysis style)
 
-Paste a move list (`f5 d6 c3 …` or the run-together transcript `f5d6c3…`) or hit
-**Use last game**. You get:
+An **interactive analysis board** — you don't type moves, you play them:
 
-- an **eval graph** — the bot's win-probability for Black across the game
-  (click it, or a move in the list, to jump to that position);
-- the board at the selected position, with the played move outlined and the
-  suggested move dashed;
-- a **per-move list** with a Lichess-style label and glyph
-  (Best / Excellent / Good / Inaccuracy `?!` / Mistake `?` / Blunder `??`) and a
-  suggested alternative.
+- legal moves are shown as dots; click a square to add it to the line;
+- **`bot likes: c4 70% · f5 70% · …`** lists the bot's top moves for the current
+  position (click one to play it);
+- the bot's best move is outlined with a dashed box; after a move is played it's
+  graded (Best / Excellent / Good / Inaccuracy `?!` / Mistake `?` / Blunder `??`);
+- navigate with ⏮ ◀ ▶ ⏭, the arrow keys, or by clicking the eval graph / move
+  list; **take back** (or Backspace) pops the last move; playing a move while
+  viewing an earlier position replaces the continuation from there;
+- **use last game** loads the game you just played; **paste game** accepts a
+  move list (`f5 d6 c3 …`) or run-together transcript (`f5d6c3…`);
+- a `?analyse=<transcript>` URL opens straight into that line.
+
+The **eval graph** is the bot's win-probability for Black across the line (see the
+note below on why it's blended with a positional score).
 
 ### How a move is graded
 
@@ -113,6 +119,7 @@ Commands: `genmove <transcript>`, `eval <transcript>`, `name`, `quit`.
 | `POST /api/new` | `{human_color, level}` | new game state |
 | `POST /api/move` | `{action}` | state after your move + the bot's reply |
 | `POST /api/bot_move` | | state after the bot moves (bot plays first) |
-| `POST /api/analyse` | `{moves` \| `transcript` \| `history_actions}` | per-ply analysis + eval graph + positions |
+| `GET /api/eval` | | the bot's read of the current game position |
+| `POST /api/analyse` | `{moves` \| `transcript` \| `history_actions}` | `positions[]` (grid + legal moves + eval per ply boundary), `plies[]` (move grades), `eval_graph`, `summary` |
 | `POST /api/finetune` | `{}` or `{moves, human_color}` | fine-tune report + move grades |
 | `POST /api/bot/reset` | | restores baseline weights |

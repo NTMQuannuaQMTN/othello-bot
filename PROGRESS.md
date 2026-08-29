@@ -47,7 +47,7 @@ None in flight.
 All results: `experiments/RESULTS.md`.
 
 ## Test status
-`python3 -m pytest` → 135 passed.
+`python3 -m pytest` → 136 passed.
 
 ## Known issues
 - Python 3.9.6 only; deps `--user`; run `python3 -m pytest`.

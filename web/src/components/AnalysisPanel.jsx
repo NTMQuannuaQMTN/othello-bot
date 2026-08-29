@@ -1,111 +1,159 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import BoardArea from "./BoardArea.jsx";
 import EvalGraph from "./EvalGraph.jsx";
 import { api, sanToIdx } from "../api.js";
 
 const SUMMARY_ORDER = ["Blunder", "Mistake", "Inaccuracy", "Good", "Excellent", "Best"];
+const EMPTY = { positions: [startPosition()], plies: [], eval_graph: [{ ply: -1, eval_black: 0.5 }], summary: { black: {}, white: {} } };
 
 export default function AnalysisPanel() {
-  const [transcript, setTranscript] = useState("");
-  const [data, setData] = useState(null);
-  const [sel, setSel] = useState(0);
-  const [error, setError] = useState(null);
+  const [line, setLine] = useState([]);
+  const [cursor, setCursor] = useState(0);
+  const [data, setData] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState("");
 
-  async function run(input) {
+  const analyse = useCallback(async (moves) => {
     setBusy(true);
     setError(null);
     try {
-      const d = await api("/analyse", input);
+      const d = await api("/analyse", { moves });
       setData(d);
-      setSel(d.positions.length - 1);
+      setCursor(d.positions.length - 1); // jump to the latest position
     } catch (e) {
       setError(e.message);
-      setData(null);
     } finally {
       setBusy(false);
     }
-  }
+  }, []);
 
-  // deep link: ?analyse=<transcript>
+  useEffect(() => { analyse(line); }, [line, analyse]);
+
+  // deep link: ?analyse=<transcript>  (one-time, on mount)
   useEffect(() => {
     const p = new URLSearchParams(location.search);
-    const line = p.get("analyse") || p.get("analysis");
-    if (line) {
-      setTranscript(line);
-      run({ transcript: line });
-    }
+    const t = p.get("analyse") || p.get("analysis");
+    if (!t) return;
+    api("/analyse", { transcript: t })
+      .then((d) => setLine(d.actions || []))
+      .catch((e) => setError(e.message));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const graphPoints = useMemo(
-    () => (data ? data.eval_graph.map((g) => g.eval_black) : []),
-    [data]
-  );
+  // keyboard navigation
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+      const n = data.positions.length;
+      if (e.key === "ArrowLeft") setCursor((c) => Math.max(0, c - 1));
+      else if (e.key === "ArrowRight") setCursor((c) => Math.min(n - 1, c + 1));
+      else if (e.key === "Home") setCursor(0);
+      else if (e.key === "End") setCursor(n - 1);
+      else if (e.key === "Backspace") takeBack();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!data) {
-    return (
-      <main>
-        <BoardArea grid={emptyGrid()} status="Paste a game to analyse." />
-        <section className="panel">
-          <Controls
-            transcript={transcript}
-            setTranscript={setTranscript}
-            busy={busy}
-            onAnalyse={() => run({ transcript })}
-            onUseLast={async () => {
-              const st = await api("/state");
-              setTranscript((st.history || []).join(" "));
-              run({ history_actions: st.history_actions });
-            }}
-          />
-          {error && <p className="error">{error}</p>}
-        </section>
-      </main>
-    );
+  const pos = data.positions[Math.min(cursor, data.positions.length - 1)];
+  const ply = cursor > 0 ? data.plies[cursor - 1] : null;
+  const graphPoints = useMemo(() => data.eval_graph.map((g) => g.eval_black), [data]);
+
+  function play(action) {
+    // truncate any continuation past the cursor, then append
+    setLine((l) => [...l.slice(0, cursor), action]);
+  }
+  function takeBack() {
+    setLine((l) => (l.length ? l.slice(0, -1) : l));
+  }
+  function clearLine() {
+    setLine([]);
+  }
+  async function useLastGame() {
+    try {
+      const st = await api("/state");
+      setLine(st.history_actions || []);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+  async function importTranscript() {
+    try {
+      setError(null);
+      const d = await api("/analyse", { transcript: importText });
+      setLine(d.actions || []);
+      setShowImport(false);
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
-  const pos = data.positions[sel];
-  const ply = data.plies[sel - 1]; // the move that led to `pos`
+  // board decorations
+  const engineMoves = pos.eval && pos.eval.moves ? pos.eval.moves : [];
+  const best = engineMoves.length ? engineMoves[0].action : null;
   const glyphs = {};
-  let best = null;
+  let bestForBoard = pos.terminal ? null : best;
   if (ply) {
     glyphs[ply.played] = { label: ply.label, glyph: ply.glyph };
-    if (ply.best !== ply.played) best = ply.best;
+    if (ply.best !== ply.played) bestForBoard = ply.best;
     else if (ply.label !== "Best" && ply.label !== "Excellent")
-      best = sanToIdx(ply.coach_best_san);
+      bestForBoard = sanToIdx(ply.coach_best_san);
   }
 
-  const status = ply
-    ? `Move ${sel}: ${ply.side} played ${ply.played_san} — ${ply.label}. ` +
-      `Bot's top: ${ply.top_moves.map((m) => `${m.san} ${Math.round(m.winprob * 100)}%`).join(", ")}`
-    : "Starting position.";
+  const status = statusLine(pos, ply, engineMoves);
 
   return (
     <main>
       <BoardArea
         grid={pos.grid}
+        legal={pos.terminal ? [] : pos.legal_actions}
         last={ply ? [ply.played] : []}
-        best={best}
+        best={bestForBoard}
         glyphs={glyphs}
-        evalBlack={graphPoints[sel]}
+        onMove={play}
+        evalBlack={graphPoints[cursor]}
         status={status}
       />
 
       <section className="panel">
-        <Controls
-          transcript={transcript}
-          setTranscript={setTranscript}
-          busy={busy}
-          onAnalyse={() => run({ transcript })}
-          onUseLast={async () => {
-            const st = await api("/state");
-            setTranscript((st.history || []).join(" "));
-            run({ history_actions: st.history_actions });
-          }}
-        />
+        <div className="controls nav">
+          <button onClick={() => setCursor(0)} disabled={cursor === 0} title="start">⏮</button>
+          <button onClick={() => setCursor((c) => Math.max(0, c - 1))} disabled={cursor === 0} title="prev (←)">◀</button>
+          <button onClick={() => setCursor((c) => Math.min(data.positions.length - 1, c + 1))}
+            disabled={cursor >= data.positions.length - 1} title="next (→)">▶</button>
+          <button onClick={() => setCursor(data.positions.length - 1)}
+            disabled={cursor >= data.positions.length - 1} title="end">⏭</button>
+          <span className="spacer" />
+          <button onClick={takeBack} disabled={!line.length} title="take back (Backspace)">take back</button>
+          <button onClick={clearLine} disabled={!line.length}>clear</button>
+          <button onClick={useLastGame}>use last game</button>
+          <button onClick={() => setShowImport((v) => !v)}>{showImport ? "close" : "paste game"}</button>
+          {busy && <span className="alt">analysing…</span>}
+        </div>
+
+        {showImport && (
+          <div className="controls">
+            <input type="text" placeholder="f5 d6 c3 …  or  f5d6c3…"
+              value={importText} onChange={(e) => setImportText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && importTranscript()} />
+            <button className="primary" onClick={importTranscript}>Load</button>
+          </div>
+        )}
         {error && <p className="error">{error}</p>}
 
-        <EvalGraph points={graphPoints} cursor={sel} onSeek={setSel} />
+        {!pos.terminal && engineMoves.length > 0 && (
+          <div className="engine-lines">
+            <span className="alt">bot likes:</span>
+            {engineMoves.slice(0, 4).map((m) => (
+              <button key={m.action} className="pv" onClick={() => play(m.action)}>
+                {m.san} <span className="alt">{Math.round(m.winprob * 100)}%</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <EvalGraph points={graphPoints} cursor={cursor} onSeek={setCursor} />
 
         <div className="analysis-summary">
           {["black", "white"].map((side) => {
@@ -116,9 +164,7 @@ export default function AnalysisPanel() {
                 {side === "black" ? "⚫ Black" : "⚪ White"}:{" "}
                 {parts.length
                   ? parts.map((k) => (
-                      <span key={k}>
-                        <b className={"label " + k}>{c[k]}</b> {k}&nbsp;&nbsp;
-                      </span>
+                      <span key={k}><b className={"label " + k}>{c[k]}</b> {k}&nbsp;&nbsp;</span>
                     ))
                   : "—"}
               </div>
@@ -130,56 +176,52 @@ export default function AnalysisPanel() {
           {data.plies.map((p) => {
             let alt = "";
             if (p.label !== "Best" && p.label !== "Excellent") {
-              const s =
-                p.best_san !== p.played_san
-                  ? p.best_san
-                  : p.coach_best_san !== p.played_san
-                  ? p.coach_best_san
-                  : null;
+              const s = p.best_san !== p.played_san ? p.best_san
+                : p.coach_best_san !== p.played_san ? p.coach_best_san : null;
               if (s) alt = `try ${s} · −${Math.round(p.drop * 100)}`;
             }
             return (
-              <li
-                key={p.ply}
-                className={sel === p.ply + 1 ? "sel" : ""}
-                onClick={() => setSel(p.ply + 1)}
-              >
+              <li key={p.ply} className={cursor === p.ply + 1 ? "sel" : ""}
+                onClick={() => setCursor(p.ply + 1)}>
                 <span className="alt">{p.ply + 1}.</span>
-                <span className="mv">
-                  {p.side === "black" ? "⚫" : "⚪"}
-                  {p.played_san}
-                </span>
+                <span className="mv">{p.side === "black" ? "⚫" : "⚪"}{p.played_san}</span>
                 <span className="alt">{alt}</span>
                 <span className={"label " + p.label}>{p.glyph || p.label}</span>
               </li>
             );
           })}
+          {!data.plies.length && (
+            <li className="alt" style={{ display: "block", cursor: "default" }}>
+              Play moves on the board to build a line — the bot analyses each one.
+            </li>
+          )}
         </ol>
       </section>
     </main>
   );
 }
 
-function Controls({ transcript, setTranscript, busy, onAnalyse, onUseLast }) {
-  return (
-    <div className="controls">
-      <input
-        type="text"
-        placeholder="paste moves: f5 d6 c3 …  or  f5d6c3…"
-        value={transcript}
-        onChange={(e) => setTranscript(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && onAnalyse()}
-      />
-      <button className="primary" onClick={onAnalyse} disabled={busy}>
-        {busy ? "Analysing…" : "Analyse"}
-      </button>
-      <button onClick={onUseLast} disabled={busy}>Use last game</button>
-    </div>
-  );
+function statusLine(pos, ply, engineMoves) {
+  if (pos.terminal) {
+    return pos.winner === "draw"
+      ? `Game over — draw ${pos.score.black}–${pos.score.white}.`
+      : `Game over — ${pos.winner} wins ${pos.score.black}–${pos.score.white}.`;
+  }
+  const top = engineMoves.slice(0, 3)
+    .map((m) => `${m.san} ${Math.round(m.winprob * 100)}%`).join(", ");
+  if (!ply) return `Starting position. Bot likes: ${top}`;
+  return `${ply.side} played ${ply.played_san} — ${ply.label}` +
+    (ply.best_san !== ply.played_san ? ` (best: ${ply.best_san})` : "") +
+    `.  Now: ${top}`;
 }
 
-function emptyGrid() {
+function startPosition() {
   const g = Array.from({ length: 8 }, () => Array(8).fill(0));
   g[3][3] = -1; g[3][4] = 1; g[4][3] = 1; g[4][4] = -1;
-  return g;
+  return {
+    grid: g, turn: "black", terminal: false, winner: null,
+    legal_actions: [19, 26, 37, 44], score: { black: 2, white: 2 },
+    eval: { terminal: false, winprob_black: 0.5, winprob_stm: 0.5, moves: [] },
+  };
 }
+

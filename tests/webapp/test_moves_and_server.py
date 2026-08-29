@@ -96,10 +96,16 @@ def test_play_and_analyse_flow(server):
     assert st["winner"] in ("black", "white", "draw")
 
     an = _call(server, "/api/analyse", {"history_actions": st["history_actions"]})
-    assert an["n_moves"] == len(st["history_actions"])
     assert len(an["eval_graph"]) == an["n_moves"] + 1
     assert len(an["positions"]) == an["n_moves"] + 1
     assert all(0.0 <= p["eval_black"] <= 1.0 for p in an["eval_graph"])
+    # each position is navigation-ready (grid + legal moves + eval)
+    assert all("eval" in p and "legal_actions" in p for p in an["positions"])
+
+    # interactive: analyse a partial line and get the current position's options
+    partial = _call(server, "/api/analyse", {"moves": st["history_actions"][:5]})
+    cur = partial["positions"][-1]
+    assert cur["legal_actions"] and cur["eval"]["moves"]
 
 
 def test_illegal_move_returns_400(server):
