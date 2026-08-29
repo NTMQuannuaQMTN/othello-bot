@@ -8,6 +8,8 @@ build/
 dist/
 *.pt
 *.pth
+!models/*.pt
+webapp_state/
 runs/
 .venv/
 venv/

@@ -1,4 +1,5 @@
 """Smoke-test the CLI scripts end to end (tiny workloads)."""
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -78,6 +79,49 @@ def test_selfplay_script_smoke(tmp_path):
     run = next(iter(tmp_path.glob("*_spsmoke")))
     assert (run / "checkpoints" / "final.pt").exists()
     assert (run / "metrics.jsonl").exists()
+
+
+def test_serve_script_boots_and_serves(tmp_path):
+    import json as _json
+    import time as _time
+    import urllib.request
+
+    cfg = tmp_path / "web.yaml"
+    cfg.write_text(
+        f"host: 127.0.0.1\nport: 8771\ncheckpoint: models/othello_bot_v1.pt\n"
+        f"state_dir: {tmp_path / 'state'}\nfinetune: {{grad_steps: 4, anchor_transitions: 60}}\n"
+    )
+    proc = subprocess.Popen([sys.executable, str(SCRIPTS / "serve.py"), "--config", str(cfg)],
+                            cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    try:
+        ok = False
+        for _ in range(50):
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:8771/api/bot", timeout=1) as r:
+                    info = _json.loads(r.read())
+                    ok = info["params"] > 0
+                    break
+            except Exception:
+                _time.sleep(0.3)
+        assert ok, "server did not come up"
+        with urllib.request.urlopen("http://127.0.0.1:8771/") as r:
+            assert b"Othello" in r.read()
+    finally:
+        proc.terminate()
+        proc.wait(timeout=10)
+
+
+def test_bot_cli_protocol():
+    inp = "name\ngenmove\ngenmove f5d6c3\neval f5d6\nbogus\nquit\n"
+    r = _run([str(SCRIPTS / "bot_cli.py"), "--checkpoint", "models/othello_bot_v1.pt"],
+             stdin=inp)
+    assert r.returncode == 0, r.stderr
+    lines = r.stdout.strip().splitlines()
+    assert lines[0].startswith("othello-bot")
+    assert re.match(r"^[a-h][1-8]$", lines[1])          # opening move
+    assert re.match(r"^[a-h][1-8]$", lines[2])
+    assert re.match(r"^0\.\d+ [a-h][1-8]$", lines[3])   # eval line
+    assert lines[4].startswith("? unknown")
 
 
 def test_play_script_scripted_game():

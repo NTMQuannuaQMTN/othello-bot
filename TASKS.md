@@ -111,3 +111,18 @@ pass, and the full suite is green.
 - [ ] `rl/az_arena.py` — gate candidate vs current best (promote if > ~55%)
 - [ ] `scripts/az_train.py` — self-play → train → gate iteration loop
 - [ ] Milestone: iterated training shows rising internal Elo vs baselines + prev best
+
+## Phase 10 — Web app (play · fine-tune · analysis)
+
+- [x] `webapp/bot_service.py` — `OthelloBot` (stable tested interface): move
+      selection, position/move evaluation, `analyse_game`, `finetune_from_game`
+- [x] Move grading: bot win-prob regret + 1-ply positional check -> Lichess-style label
+- [x] Fine-tune: game transitions + shaping + anchored replay buffer + guardrail rollback
+- [x] `webapp/session.py` in-memory human-vs-bot game
+- [x] `webapp/moves.py` transcript / move-list parser + position replay
+- [x] `webapp/server.py` zero-dependency JSON API + static server
+- [x] Frontend: board UI, Play tab, Analysis tab (eval graph, per-move labels, nav)
+- [x] `scripts/serve.py` + `configs/webapp.yaml`
+- [x] `scripts/bot_cli.py` line protocol for external harnesses (`genmove` / `eval`)
+- [x] `models/othello_bot_v1.pt` bundled bot + `docs/webapp.md`
+- [x] Tests: bot_service, moves, HTTP API, serve/CLI smoke

@@ -3,12 +3,24 @@
 _Last updated: 2026-08-29_
 
 ## Current phase
-Phases 1–9 complete and empirically validated. Remaining work is the optional
-future AlphaZero-style upgrade (`docs/alphazero-plan.md`).
+Phases 1–10 complete and validated. Remaining work is the optional future
+AlphaZero-style upgrade (`docs/alphazero-plan.md`).
 
 ## Current task
-None in flight. The pipeline (engine → baselines → evaluation → RL env → DQN →
-curriculum → self-play → tracking → play UI) is built, tested, and demonstrated.
+None in flight.
+
+## Phase 10 — Web app (play / fine-tune / analysis)
+- `scripts/serve.py` → zero-dependency web app (`http.server` + vanilla JS).
+- **Play**: full game vs the bot; **Analysis**: Lichess-style eval graph +
+  per-move Best/Inaccuracy/Mistake/Blunder labels + suggested moves.
+- **Fine-tune from a game**: grades each bot move (bot win-prob regret + 1-ply
+  positional check), builds DQN transitions with the game result + shaping
+  (hard negative for blunders, positive for best), trains on an anchored replay
+  buffer, and **rolls the update back** if win rate vs Random drops.
+- `webapp/bot_service.py::OthelloBot` is the stable interface for external
+  testing; `scripts/bot_cli.py` is a `genmove`/`eval` line protocol.
+- Bundled bot: `models/othello_bot_v1.pt` (curriculum + self-play checkpoint).
+- Docs: `docs/webapp.md`. Tests: `tests/webapp/` + serve/CLI smoke.
 
 ## Completed
 - **Phase 0–5** — scaffolding; tested Othello engine; Random/Greedy/Heuristic/
@@ -32,7 +44,7 @@ curriculum → self-play → tracking → play UI) is built, tested, and demonst
 All results: `experiments/RESULTS.md`.
 
 ## Test status
-`python3 -m pytest` → 117 passed.
+`python3 -m pytest` → 134 passed.
 
 ## Known issues
 - Python 3.9.6 only; deps `--user`; run `python3 -m pytest`.

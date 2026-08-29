@@ -41,8 +41,24 @@ python3 scripts/evaluate.py  --config configs/evaluation.yaml
 python3 scripts/train.py     --config configs/train.yaml     # live progress bar in a terminal
 python3 scripts/selfplay.py  --config configs/selfplay.yaml --init <checkpoint.pt>
 python3 scripts/track.py     --run experiments/<run_dir>     # strength curves over checkpoints
-python3 scripts/play.py      --checkpoint experiments/<run_dir>/checkpoints/final.pt
+python3 scripts/play.py      --checkpoint models/othello_bot_v1.pt   # terminal game
+python3 scripts/serve.py     --config configs/webapp.yaml    # web app -> http://127.0.0.1:8000
 ```
+
+## Web app
+
+`scripts/serve.py` runs a zero-dependency web app (`docs/webapp.md`):
+
+- **Play** against the bot; after a game, **fine-tune** it from your moves —
+  the bot's good moves are reinforced and its blunders penalised (graded by a
+  1-ply positional check), with a guardrail that rolls back an update that made
+  the bot weaker vs a random opponent.
+- **Analysis** — Lichess-style move-by-move review: eval graph, per-move
+  Best/Inaccuracy/Mistake/Blunder labels, suggested moves.
+
+The bot is a stable component for external testing — `OthelloBot.load(...)`,
+or the `scripts/bot_cli.py` line protocol (`genmove` / `eval`). The default
+checkpoint is `models/othello_bot_v1.pt` (see `models/README.md`).
 
 `train.py` / `selfplay.py` show a `tqdm` progress bar (total env-steps, current
 stage, live epsilon / loss / mean-return) plus periodic eval lines. In a terminal
@@ -60,9 +76,11 @@ tail -f experiments/<run_dir>/metrics.jsonl        # structured, one JSON row pe
 src/othello_rl/
   environment/  board.py rules.py environment.py
   agents/       base.py random_agent.py greedy_agent.py heuristic_agent.py minimax_agent.py
-  rl/           network.py replay_buffer.py agent.py trainer.py self_play.py opponents.py
-  evaluation/   tournament.py metrics.py elo.py
-  utils/        config.py seed.py logging.py experiment.py
-scripts/        train.py evaluate.py play.py
+  rl/           network.py replay_buffer.py agent.py trainer.py opponents.py curriculum.py self_play.py
+  evaluation/   tournament.py metrics.py elo.py harness.py tracking.py report.py
+  utils/        config.py seed.py logging.py experiment.py plots.py progress.py
+  webapp/       bot_service.py session.py moves.py server.py static/
+scripts/        train.py selfplay.py evaluate.py track.py play.py serve.py bot_cli.py
+models/         othello_bot_v1.pt          # the bundled bot
 tests/          mirrors src/
 ```

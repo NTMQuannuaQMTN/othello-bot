@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Othello RL — Play &amp; Analyse</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>Othello<span class="accent">RL</span></h1>
+  <nav class="tabs">
+    <button data-tab="play" class="active">Play</button>
+    <button data-tab="analysis">Analysis</button>
+  </nav>
+  <div id="bot-badge" class="badge" title="the bot the site plays and analyses with"></div>
+</header>
+
+<main>
+  <section class="board-wrap">
+    <div id="evalbar" class="evalbar"><div id="evalbar-fill"></div><span id="evalbar-num"></span></div>
+    <div id="board" class="board" aria-label="Othello board"></div>
+    <div id="status" class="status"></div>
+  </section>
+
+  <!-- PLAY -->
+  <section id="panel-play" class="panel">
+    <div class="controls">
+      <label>You play
+        <select id="human-color">
+          <option value="black">Black (moves first)</option>
+          <option value="white">White</option>
+          <option value="random">Random</option>
+        </select>
+      </label>
+      <button id="new-game" class="primary">New game</button>
+    </div>
+    <ol id="move-list" class="move-list"></ol>
+    <div id="gameover" class="gameover hidden">
+      <p id="gameover-text"></p>
+      <button id="finetune-btn" class="primary">Fine-tune bot from this game</button>
+      <p class="hint">Takes the bot's moves from the game just played, rewards its
+      best moves and penalises blunders (graded by a depth-2 search), runs a short
+      training pass, and keeps the update only if the bot doesn't get weaker vs a
+      random opponent.</p>
+    </div>
+    <div id="ft-result" class="ft-result hidden"></div>
+  </section>
+
+  <!-- ANALYSIS -->
+  <section id="panel-analysis" class="panel hidden">
+    <div class="controls">
+      <input id="transcript" type="text" placeholder="paste moves: f5 d6 c3 …  or  f5d6c3…">
+      <button id="analyse-btn" class="primary">Analyse</button>
+      <button id="analyse-current">Use last game</button>
+    </div>
+    <svg id="eval-graph" class="eval-graph" viewBox="0 0 600 120" preserveAspectRatio="none"></svg>
+    <div id="analysis-summary" class="analysis-summary"></div>
+    <ol id="analysis-list" class="analysis-list"></ol>
+  </section>
+</main>
+
+<footer>
+  <span>DQN bot · <code id="bot-detail"></code></span>
+  <button id="reset-bot" class="link">reset bot to baseline</button>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

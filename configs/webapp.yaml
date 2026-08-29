@@ -1,0 +1,20 @@
+# Web app configuration.
+host: 127.0.0.1
+port: 8000
+
+# The bot the site plays / analyses with. On first run it is copied into
+# `state_dir/current.pt`; subsequent runs resume from there unless --fresh.
+checkpoint: models/othello_bot_v1.pt
+state_dir: webapp_state
+
+finetune:
+  lr: 0.0001
+  grad_steps: 120
+  batch_size: 64
+  emphasis: 6              # how strongly the just-played game weighs vs anchor data
+  blunder_penalty: 0.8
+  great_bonus: 0.3
+  buffer_capacity: 30000
+  anchor_transitions: 2000 # bot-vs-baseline transitions kept to resist forgetting
+  guardrail_games: 60      # games vs Random before/after; roll back if it drops
+  guardrail_margin: 0.10
