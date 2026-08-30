@@ -111,6 +111,18 @@ def test_serve_script_boots_and_serves(tmp_path):
         proc.wait(timeout=10)
 
 
+def test_eval_bot_script_smoke(tmp_path):
+    r = _run([str(SCRIPTS / "eval_bot.py"), "--agent", "greedy",
+              "--games", "8", "--elo-extra-games", "6", "--out", str(tmp_path)])
+    assert r.returncode == 0, r.stderr
+    run = next(iter(tmp_path.glob("*_eval_greedy")))
+    assert (run / "bot_eval.md").exists()
+    assert (run / "bot_eval.json").exists()
+    data = __import__("json").loads((run / "bot_eval.json").read_text())
+    assert set(data["vs"]) == set(data["panel"])
+    assert "minimax:2" in data["panel"]
+
+
 def test_bot_cli_protocol():
     inp = "name\ngenmove\ngenmove f5d6c3\neval f5d6\nbogus\nquit\n"
     r = _run([str(SCRIPTS / "bot_cli.py"), "--checkpoint", "models/othello_bot_v1.pt"],

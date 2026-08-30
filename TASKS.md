@@ -94,6 +94,9 @@ pass, and the full suite is green.
 ## Phase 8 — Evaluation & experiment tracking
 
 - [x] Standard eval protocol vs Random/Greedy/Heuristic/Minimax/historical
+      — `evaluation/bot_report.py` + `scripts/eval_bot.py` (single checkpoint vs
+      the full panel incl. Minimax 1/2/3, Wilson CIs, internal-Elo placement);
+      `scripts/track.py` for the multi-checkpoint / historical view
 - [x] `utils/logging.py` metric logger (JSONL + CSV)
 - [x] Plots: games vs win-rate, iterations vs baseline perf, checkpoint vs Elo
 - [x] Experiment metadata capture

@@ -10,6 +10,7 @@ from .metrics import MatchSummary, summarize_match, wilson_interval, win_rate
 from .elo import EloModel, expected_score, ratings_from_matches, update_pair
 from .report import generate_report
 from .harness import evaluate_agent, flatten_eval
+from .bot_report import STANDARD_PANEL, standard_panel_eval, write_bot_report
 from .tracking import (
     discover_checkpoints,
     track_checkpoints,
@@ -38,4 +39,7 @@ __all__ = [
     "discover_checkpoints",
     "write_tracking_report",
     "write_tracking_plots",
+    "standard_panel_eval",
+    "write_bot_report",
+    "STANDARD_PANEL",
 ]
