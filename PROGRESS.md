@@ -122,8 +122,9 @@ referee check over 150 episodes — all clean.
       2-checkpoint smoke).
 
 ## Technical Debt
-- [ ] `OpponentPool.snapshot_state()` is effectively dead (no restore path,
-      not used outside its own unit test). Either wire up restore or drop it.
+- [x] ~~`OpponentPool.snapshot_state()` dead~~ → replaced with `save()`/`load()`;
+      `run_self_play(resume_pool=...)` and `scripts/selfplay.py --resume <run>`
+      restore the pool so a warm-started run continues the historical ladder.
 - [ ] `webapp/moves.py::replay_positions` is now only used by its own test
       (`analyse_line` supersedes it). Harmless helper; keep or remove.
 - [ ] `MinimaxAgent.search_value` doesn't reset `self.nodes` (diagnostic only).

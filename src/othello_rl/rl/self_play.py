@@ -15,11 +15,14 @@ from __future__ import annotations
 
 import copy
 import random
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
+import torch
+
 from othello_rl.agents import Agent, make_agent
-from .agent import DQNAgent
+from .agent import DQNAgent, NetworkConfig
 
 DEFAULT_DISTRIBUTION = {"baseline": 0.2, "historical": 0.3, "recent": 0.5}
 
@@ -96,14 +99,34 @@ class OpponentPool:
             counts[category] += 1
         return counts
 
-    def snapshot_state(self) -> dict:
-        """Serialisable-ish snapshot of pool membership (net weights kept)."""
-        return {
+    # -- persistence (for resuming a self-play run) ----------------
+    def save(self, path) -> None:
+        """Write the pool's frozen snapshots + counters so a run can resume."""
+        nc = self._recent[0].net_config if self._recent else NetworkConfig()
+        torch.save({
             "snapshot_count": self._snapshot_count,
-            "recent": [copy.deepcopy(a.net.state_dict()) for a in self._recent],
-            "historical": [copy.deepcopy(a.net.state_dict()) for a in self._historical],
-            "net_config": self._recent[0].net_config if self._recent else None,
-        }
+            "net_config": asdict(nc),
+            "recent": [(a.name, a.net.state_dict()) for a in self._recent],
+            "historical": [(a.name, a.net.state_dict()) for a in self._historical],
+        }, Path(path))
+
+    def load(self, path, device: str = "cpu") -> "OpponentPool":
+        ckpt = torch.load(Path(path), map_location=device, weights_only=False)
+        nc = NetworkConfig(**ckpt["net_config"])
+
+        def rebuild(name, state_dict) -> DQNAgent:
+            ag = DQNAgent(nc, device=device)
+            ag.net.load_state_dict(state_dict)
+            ag.net.eval()
+            for p in ag.net.parameters():
+                p.requires_grad_(False)
+            ag.name = name
+            return ag
+
+        self._recent = [rebuild(n, sd) for n, sd in ckpt["recent"]]
+        self._historical = [rebuild(n, sd) for n, sd in ckpt["historical"]]
+        self._snapshot_count = int(ckpt["snapshot_count"])
+        return self
 
 
 @dataclass
@@ -121,12 +144,15 @@ class SelfPlayConfig:
 
 
 def run_self_play(agent: DQNAgent, cfg: SelfPlayConfig, run_dir, seed: int = 0,
-                  progress: "bool | str" = "auto"):
+                  progress: "bool | str" = "auto", resume_pool: Optional[str] = None):
     """Train ``agent`` by self-play against ``cfg.pool``, snapshotting the learner
     into the pool periodically and evaluating against baselines + historical
-    snapshots (anti-forgetting)."""
-    from pathlib import Path
+    snapshots (anti-forgetting).
 
+    ``resume_pool`` : path to a ``pool.pt`` from a previous run — restores the
+    opponent pool so a warm-started run continues rather than restarting the
+    historical/recent ladder.
+    """
     from othello_rl.evaluation.harness import evaluate_agent, flatten_eval
     from othello_rl.utils.logging import MetricLogger
     from othello_rl.utils.progress import make_progress
@@ -140,9 +166,14 @@ def run_self_play(agent: DQNAgent, cfg: SelfPlayConfig, run_dir, seed: int = 0,
 
     dqn_cfg = cfg.dqn or DQNConfig()
     pool = cfg.pool
-    # seed the pool with the starting (near-random) agent so early self-play has
-    # someone to play before the first scheduled snapshot
-    pool.add_snapshot(agent, tag="init")
+    if resume_pool:
+        pool.load(resume_pool, device=str(agent.device))
+        logger.log(phase="resume", pool=str(resume_pool),
+                   recent=pool.num_recent, historical=pool.num_historical)
+    else:
+        # seed the pool with the starting (near-random) agent so early self-play
+        # has someone to play before the first scheduled snapshot
+        pool.add_snapshot(agent, tag="init")
 
     env = FixedOpponentEnv(pool, learner_color=cfg.learner_color, seed=seed,
                            opening_plies=cfg.opening_plies)
@@ -194,11 +225,13 @@ def run_self_play(agent: DQNAgent, cfg: SelfPlayConfig, run_dir, seed: int = 0,
             last_ckpt = s
             trainer._sync_agent_meta()
             agent.save(ckpt_dir / f"step{s}.pt")
+            pool.save(ckpt_dir / "pool.pt")
 
     trainer._sync_agent_meta()
     do_eval("end")
     bar.close()
     agent.save(ckpt_dir / "final.pt")
+    pool.save(ckpt_dir / "pool.pt")
     logger.log(phase="done", env_steps=trainer.env_steps)
     return logger
 

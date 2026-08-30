@@ -30,6 +30,8 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config", default="configs/selfplay.yaml")
     ap.add_argument("--init", default=None, help="warm-start checkpoint (overrides config)")
+    ap.add_argument("--resume", default=None,
+                    help="a previous run dir: warm-start from its final.pt and restore its pool.pt")
     ap.add_argument("--steps-scale", type=float, default=1.0)
     ap.add_argument("--out", default="experiments")
     ap.add_argument("--progress", choices=["auto", "on", "off"], default="auto")
@@ -42,7 +44,13 @@ def main(argv=None) -> int:
     run_dir = create_run_dir(args.out, cfg.get("tag", "selfplay"))
     dump_config(dict(cfg), run_dir / "resolved_config.yaml")
 
+    resume_pool = None
     init_ckpt = args.init or cfg.get("init_checkpoint")
+    if args.resume:
+        resume_dir = Path(args.resume)
+        init_ckpt = str(resume_dir / "checkpoints" / "final.pt")
+        resume_pool = str(resume_dir / "checkpoints" / "pool.pt")
+        print(f"resuming from {resume_dir}")
     device = str(cfg.get("device", "cpu"))
     if init_ckpt:
         agent = DQNAgent.from_checkpoint(init_ckpt, device=device, seed=seed)
@@ -79,7 +87,8 @@ def main(argv=None) -> int:
                                               "steps_scale": scale})
     print(f"run dir: {run_dir}")
     progress = {"auto": "auto", "on": True, "off": False}[args.progress]
-    run_self_play(agent, sp_cfg, run_dir, seed=seed, progress=progress)
+    run_self_play(agent, sp_cfg, run_dir, seed=seed, progress=progress,
+                  resume_pool=resume_pool)
 
     # plots
     rows = MetricLogger.load(run_dir / "metrics.jsonl")

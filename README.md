@@ -40,6 +40,8 @@ python3 -m pytest                              # test suite
 python3 scripts/evaluate.py  --config configs/evaluation.yaml
 python3 scripts/train.py     --config configs/train.yaml     # live progress bar in a terminal
 python3 scripts/selfplay.py  --config configs/selfplay.yaml --init <checkpoint.pt>
+python3 scripts/selfplay.py  --config configs/selfplay.yaml --resume experiments/<run>  # continue a run (weights + opponent pool)
+python3 scripts/eval_bot.py  --checkpoint models/othello_bot_v1.pt  # vs Random/Greedy/Heuristic/Minimax 1-3
 python3 scripts/track.py     --run experiments/<run_dir>     # strength curves over checkpoints
 python3 scripts/play.py      --checkpoint models/othello_bot_v1.pt   # terminal game
 python3 scripts/serve.py     --config configs/webapp.yaml    # web app -> http://127.0.0.1:8000

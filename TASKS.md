@@ -87,9 +87,10 @@ pass, and the full suite is green.
 ## Phase 7 — Self-play
 
 - [x] `rl/self_play.py` — opponent pool, configurable sampling
-- [x] Checkpoint pool management
+- [x] Checkpoint pool management (`pool.save/load`; `pool.pt` beside checkpoints)
 - [x] Anti-forgetting eval vs historical checkpoints
-- [x] Tests: pool sampling distribution, snapshot/restore
+- [x] Resume a self-play run (`run_self_play(resume_pool=)` / `selfplay.py --resume`)
+- [x] Tests: pool sampling distribution, snapshot independence, save/load round-trip, resume
 
 ## Phase 8 — Evaluation & experiment tracking
 
