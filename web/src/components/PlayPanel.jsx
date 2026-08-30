@@ -27,7 +27,19 @@ export default function PlayPanel({ onBotChanged }) {
     refreshEval();
   }, [color, refreshEval]);
 
-  useEffect(() => { newGame(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // start a game on mount; if the API isn't up yet, keep retrying until it is
+  useEffect(() => {
+    let stop = false;
+    const start = async () => {
+      try {
+        if (!stop) await newGame();
+      } catch {
+        if (!stop) setTimeout(start, 2500);
+      }
+    };
+    start();
+    return () => { stop = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // auto-pass when the human is on move but has no legal placing move
   useEffect(() => {

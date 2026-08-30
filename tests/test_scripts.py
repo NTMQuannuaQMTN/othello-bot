@@ -91,8 +91,11 @@ def test_serve_script_boots_and_serves(tmp_path):
         f"host: 127.0.0.1\nport: 8771\ncheckpoint: models/othello_bot_v1.pt\n"
         f"state_dir: {tmp_path / 'state'}\nfinetune: {{grad_steps: 4, anchor_transitions: 60}}\n"
     )
-    proc = subprocess.Popen([sys.executable, str(SCRIPTS / "serve.py"), "--config", str(cfg)],
-                            cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    # run from web/ (as `npm run api` does) with a repo-root-relative config &
+    # checkpoint — serve.py must still find them.
+    proc = subprocess.Popen(
+        [sys.executable, str(SCRIPTS / "serve.py"), "--config", str(cfg)],
+        cwd=ROOT / "web", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     try:
         ok = False
         for _ in range(50):

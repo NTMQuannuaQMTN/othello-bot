@@ -11,16 +11,22 @@ export default function App() {
       : "play"
   );
   const [bot, setBot] = useState(null);
+  const [apiDown, setApiDown] = useState(false);
 
   const refreshBot = useCallback(async () => {
     try {
       setBot(await api("/bot"));
+      setApiDown(false);
     } catch {
-      /* ignore */
+      setApiDown(true);
     }
   }, []);
 
-  useEffect(() => { refreshBot(); }, [refreshBot]);
+  useEffect(() => {
+    refreshBot();
+    const id = setInterval(refreshBot, 3000); // keep retrying while the API is down
+    return () => clearInterval(id);
+  }, [refreshBot]);
 
   async function resetBot() {
     if (!confirm("Reset the bot to its baseline weights? This discards all fine-tuning."))
@@ -46,6 +52,15 @@ export default function App() {
         </nav>
         <BotBadge bot={bot} />
       </header>
+
+      {apiDown && (
+        <div className="api-down">
+          Can't reach the bot API on <code>:8000</code>. Start it in another
+          terminal:&nbsp;
+          <code>python3 scripts/serve.py --config configs/webapp.yaml</code>
+          &nbsp;(or run <code>npm run dev:all</code> instead of <code>npm run dev</code>).
+        </div>
+      )}
 
       {tab === "play" ? (
         <PlayPanel onBotChanged={refreshBot} />

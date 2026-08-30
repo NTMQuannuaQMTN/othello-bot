@@ -96,5 +96,10 @@ footer { display: flex; gap: 14px; align-items: center; padding: 12px 20px; bord
 footer code { color: var(--ink); }
 button.link { background: none; border: 0; color: var(--accent); text-decoration: underline; margin-left: auto; }
 .error { color: var(--blunder); }
+.api-down {
+  margin: 0; padding: 10px 20px; font-size: 13px;
+  background: #3a1d1d; color: #f5c2c2; border-bottom: 1px solid #5a2a2a;
+}
+.api-down code { background: rgba(255,255,255,.1); padding: 1px 5px; border-radius: 4px; color: #fff; }
 
 @media (max-width: 560px) { .board { --sq: 38px; } }

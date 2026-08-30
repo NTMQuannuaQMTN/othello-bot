@@ -4,18 +4,27 @@
 analysis, fine-tuning. **Frontend** = React + Vite in `web/`.
 
 ```bash
-# dev (hot reload)
-python3 scripts/serve.py --config configs/webapp.yaml     # terminal 1  -> API on :8000
-cd web && npm install && npm run dev                      # terminal 2  -> :5173 (proxies /api)
-#   (or: cd web && npm run dev:all   — runs both)
+# dev (hot reload) — needs BOTH the API (:8000) and Vite (:5173)
+cd web && npm install && npm run dev:all      # runs both; open http://localhost:5173
 
-# production
+# ...or in two terminals:
+python3 scripts/serve.py --config configs/webapp.yaml     # terminal 1  -> API on :8000
+cd web && npm run dev                                     # terminal 2  -> :5173 (proxies /api)
+
+# production (single process)
 cd web && npm run build          # -> web/dist
 python3 scripts/serve.py         # serves web/dist on http://127.0.0.1:8000
 ```
 
-If `web/dist` isn't built, `scripts/serve.py` still runs the API and serves a
-short "how to build the front end" page at `/`.
+Notes:
+- Open **`http://localhost:5173`** (the URL Vite prints), not `127.0.0.1:5173`
+  — Vite may bind IPv6-only.
+- `scripts/serve.py` resolves its config paths against the repo root, so
+  `npm run api` / `npm run dev:all` work even though npm runs it from `web/`.
+- If the API isn't up yet the app shows a red banner with the command to run and
+  recovers automatically once it responds.
+- With no `web/dist` build, `scripts/serve.py` still runs the API and serves a
+  short "how to build the front end" page at `/`.
 
 ## Play tab
 

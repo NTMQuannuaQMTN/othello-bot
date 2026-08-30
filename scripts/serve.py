@@ -39,14 +39,31 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     seed_everything(0)
 
-    cfg = load_config(args.config)
     _root = Path(__file__).resolve().parents[1]
+
+    def _rel(p) -> Path:
+        """Resolve a path against the repo root so the server works no matter
+        which directory it's launched from (e.g. `npm run api` runs it from web/)."""
+        p = Path(p)
+        return p if p.is_absolute() else (_root / p)
+
+    cfg = load_config(_rel(args.config) if not Path(args.config).exists() else args.config)
     host = args.host or cfg.get("host", "127.0.0.1")
     port = args.port or int(cfg.get("port", 8000))
-    base_ckpt = Path(args.checkpoint or cfg.get("checkpoint", "models/othello_bot_v1.pt"))
-    state_dir = Path(cfg.get("state_dir", "webapp_state"))
+
+    if args.checkpoint:  # CLI path: try as given, then repo-root relative
+        base_ckpt = Path(args.checkpoint)
+        if not base_ckpt.exists():
+            base_ckpt = _rel(args.checkpoint)
+    else:
+        base_ckpt = _rel(cfg.get("checkpoint", "models/othello_bot_v1.pt"))
+    state_dir = _rel(cfg.get("state_dir", "webapp_state"))
     state_dir.mkdir(parents=True, exist_ok=True)
-    static_dir = _root / cfg.get("static_dir", "web/dist")
+    static_dir = _rel(cfg.get("static_dir", "web/dist"))
+
+    if not base_ckpt.is_file():
+        print(f"ERROR: bot checkpoint not found: {base_ckpt}", file=sys.stderr)
+        return 2
 
     current = state_dir / "current.pt"
     if args.fresh or not current.exists():
