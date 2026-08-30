@@ -55,6 +55,28 @@ def test_board_array_is_readonly():
         st.array[0, 0] = 1
 
 
+def test_board_does_not_alias_or_freeze_callers_array():
+    # regression: Board must take an owned copy, not wrap/freeze the input
+    arr = B.initial_board()
+    st = Board(arr, B.BLACK)
+    assert arr.flags.writeable, "constructing a Board froze the caller's array"
+    arr[0, 0] = B.BLACK  # mutating the source must not affect the Board
+    assert st.array[0, 0] == B.EMPTY
+    # a second Board from a shared source array is independent
+    src = B.initial_board()
+    b1, b2 = Board(src, B.BLACK), Board(src, B.WHITE)
+    src[7, 7] = B.WHITE
+    assert b1.array[7, 7] == B.EMPTY and b2.array[7, 7] == B.EMPTY
+    assert b1.array is not b2.array
+
+
+def test_board_accepts_non_int8_input():
+    arr = np.zeros((8, 8), dtype=np.int64)
+    arr[3, 4] = 1
+    st = Board(arr, B.BLACK)
+    assert st.array.dtype == np.int8 and st.array[3, 4] == B.BLACK
+
+
 def test_board_equality_and_hash():
     a = Board.initial()
     b = Board.initial()

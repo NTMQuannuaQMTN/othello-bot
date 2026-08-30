@@ -22,6 +22,19 @@ def test_opening_plies_diversify_start_states():
     assert len(seen) > 5  # genuinely varied openings
 
 
+def test_reset_recovers_from_a_game_ending_random_opening():
+    # a pathologically long random opening can finish the game; reset() must
+    # retry and hand back a live position where it's the learner's turn.
+    for seed in range(15):
+        env = FixedOpponentEnv("random", learner_color=BLACK, seed=seed, opening_plies=58)
+        obs, info = env.reset(seed=seed)
+        assert not env.env.state.is_terminal()
+        assert env.env.state.player == BLACK
+        # the very next step must not trip the "not the learner's turn" assertion
+        a = int(np.nonzero(np.asarray(info["action_mask"]))[0][0])
+        env.step(a)
+
+
 def test_fixed_opponent_env_gives_learner_turn_and_perspective():
     env = FixedOpponentEnv("random", learner_color=WHITE, seed=0)
     obs, info = env.reset(seed=0)

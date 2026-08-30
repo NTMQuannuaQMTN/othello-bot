@@ -49,9 +49,12 @@ class FixedOpponentEnv:
         else:
             self.learner_is = int(self.learner_color)
 
-        obs, info = self.env.reset(seed=seed)
-        obs, info = self._random_opening(obs, info)
-        obs, info, _, _ = self._play_opponent_until_learner(obs, info)
+        for _ in range(20):  # retry if a long random opening ended the game
+            obs, info = self.env.reset(seed=seed)
+            obs, info = self._random_opening(obs, info)
+            obs, info, _, done = self._play_opponent_until_learner(obs, info)
+            if not done:
+                break
         info = {**info, "learner_color": self.learner_is}
         return obs, info
 

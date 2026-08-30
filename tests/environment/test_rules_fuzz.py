@@ -7,6 +7,25 @@ from othello_rl.environment.board import BLACK, WHITE, Board
 from othello_rl.environment import rules
 
 
+def _check_apply_delta(before: Board, move, after: Board):
+    """After a placing move, the only changed cells are {move} ∪ flipped, all set
+    to the mover; disc counts move by exactly (+flips+1 / -flips)."""
+    if move is None:
+        assert np.array_equal(before.array, after.array), "pass changed the board"
+        return
+    r, c = move
+    flips = rules.flips_for_move(before.array, before.player, move)
+    changed = set(zip(*np.nonzero(before.array != after.array)))
+    assert changed == {(r, c)} | set(flips), f"unexpected changed cells {changed}"
+    for rr, cc in changed:
+        assert after.array[rr, cc] == before.player
+    mover = before.player
+    m0 = int(np.sum(before.array == mover)); o0 = int(np.sum(before.array == -mover))
+    m1 = int(np.sum(after.array == mover));  o1 = int(np.sum(after.array == -mover))
+    assert m1 == m0 + len(flips) + 1, "mover disc count wrong"
+    assert o1 == o0 - len(flips), "opponent disc count wrong"
+
+
 def play_random_game(seed):
     rng = random.Random(seed)
     st = Board.initial()
@@ -27,7 +46,9 @@ def play_random_game(seed):
             assert passes_in_a_row <= 1, "two passes in a row => should be terminal"
             choice = None
         prev_discs = int(np.sum(st.array != 0))
+        before = st
         st = st.apply(choice)
+        _check_apply_delta(before, choice, st)
         new_discs = int(np.sum(st.array != 0))
         if choice is None:
             assert new_discs == prev_discs
@@ -36,7 +57,7 @@ def play_random_game(seed):
         # the side to move always either has a move or the game is over
         assert st.is_terminal() or rules.has_any_move(st.array, st.player)
         plies += 1
-        assert plies < 200, "game ran impossibly long"
+        assert plies <= 120, "game exceeded the 120-ply Othello maximum"
     return st
 
 

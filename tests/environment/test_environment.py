@@ -131,3 +131,30 @@ def test_action_mask_never_all_false_until_terminal():
         assert mask.any()
         legal = np.nonzero(mask)[0].tolist()
         env.step(rng.choice(legal))
+
+
+def test_max_steps_covers_the_othello_maximum():
+    from othello_rl.environment.environment import MAX_STEPS
+    # <= 60 placements, each preceded by at most one pass -> <= 120 plies
+    assert MAX_STEPS >= 120
+
+
+def test_random_episodes_terminate_and_are_never_truncated():
+    """Truncation must never fire for a correct Othello engine, and every episode
+    must end with `terminated=True` and a winner in info."""
+    for seed in range(120):
+        env = OthelloEnv()
+        _, info = env.reset(seed=seed)
+        rng = random.Random(seed)
+        plies = 0
+        while True:
+            a = rng.choice(np.nonzero(np.asarray(info["action_mask"]))[0])
+            _, reward, terminated, truncated, info = env.step(int(a))
+            plies += 1
+            assert not truncated, f"seed {seed} truncated at ply {plies}"
+            if terminated:
+                assert "winner" in info
+                assert reward in (-1.0, 0.0, 1.0)
+                break
+            assert plies <= 120
+        assert plies <= 120

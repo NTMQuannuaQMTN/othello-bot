@@ -26,11 +26,22 @@ class GameResult:
     white_score: int
     plies: int
     seed: Optional[int] = None
+    a_is_black: Optional[bool] = None  # set by play_match: was "agent A" Black this game?
 
     @property
     def score_diff(self) -> int:
         """Black discs minus White discs."""
         return self.black_score - self.white_score
+
+    def a_score(self) -> Optional[float]:
+        """Agent A's result for this game (1 win / 0.5 draw / 0 loss), or None
+        if the colour assignment wasn't recorded."""
+        if self.a_is_black is None:
+            return None
+        if self.winner == 0:
+            return 0.5
+        a_won = (self.winner == BLACK) == self.a_is_black
+        return 1.0 if a_won else 0.0
 
 
 def play_game(black: Agent, white: Agent, *, seed: Optional[int] = None,
@@ -129,6 +140,7 @@ def play_match(agent_a: AgentSpec, agent_b: AgentSpec, num_games: int = 100,
             gr = play_game(b, a, seed=gseed, opening_plies=opening_plies, opening_rng=orng)
             a_discs, b_discs = gr.white_score, gr.black_score
             a_won, b_won = gr.winner == WHITE, gr.winner == BLACK
+        gr.a_is_black = a_is_black
 
         res.games.append(gr)
         res.a_disc_total += a_discs

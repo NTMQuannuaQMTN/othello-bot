@@ -126,22 +126,29 @@ class Board:
 
     __slots__ = ("array", "player")
 
-    def __init__(self, array: np.ndarray, player: int):
-        if array.shape != (BOARD_SIZE, BOARD_SIZE):
+    def __init__(self, array: np.ndarray, player: int, _own: bool = False):
+        arr = np.asarray(array)
+        if arr.shape != (BOARD_SIZE, BOARD_SIZE):
             raise ValueError(f"board array must be {BOARD_SIZE}x{BOARD_SIZE}")
         if player not in (BLACK, WHITE):
             raise ValueError("player must be BLACK(1) or WHITE(-1)")
-        self.array = np.asarray(array, dtype=np.int8)
+        # Take an owned copy unless the caller guarantees a fresh, dedicated array
+        # (``_own=True``, used only by internal transitions). This keeps a Board
+        # truly immutable and stops it from aliasing/freezing a caller's array.
+        if _own and arr.dtype == np.int8:
+            self.array = arr
+        else:
+            self.array = np.array(arr, dtype=np.int8)
         self.array.flags.writeable = False
         self.player = int(player)
 
     # -- construction -------------------------------------------------------
     @classmethod
     def initial(cls) -> "Board":
-        return cls(initial_board(), BLACK)
+        return cls(initial_board(), BLACK, _own=True)
 
     def copy(self) -> "Board":
-        return Board(self.array.copy(), self.player)
+        return Board(self.array.copy(), self.player, _own=True)
 
     # -- queries ----------------------------------------------------------
     def legal_moves(self) -> List[Tuple[int, int]]:
@@ -185,11 +192,11 @@ class Board:
         """Play ``move`` (``(row,col)``, flat int, or ``None`` for pass) and
         switch to whichever player moves next. Raises on an illegal move."""
         move = self._coerce(move)
-        new_array = rules.apply_move(self.array, self.player, move)
+        new_array = rules.apply_move(self.array, self.player, move)  # fresh array
         nxt = rules.next_player(new_array, self.player)
         if nxt is None:  # terminal: keep a valid player value for the state
             nxt = opponent(self.player)
-        return Board(new_array, nxt)
+        return Board(new_array, nxt, _own=True)
 
     # -- misc -----------------------------------------------------------
     def render(self) -> str:

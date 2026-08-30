@@ -30,7 +30,10 @@ from . import rules
 
 OBS_SHAPE = (3, BOARD_SIZE, BOARD_SIZE)
 NUM_ACTIONS = NUM_SQUARES + 1  # 65
-MAX_STEPS = 80  # 60 placements + a generous margin for passes
+# An Othello game has at most 60 placements; a pass only ever occurs immediately
+# before an opponent placement, so plies <= 60 + 60 = 120. 130 is a safe cap that
+# should essentially never fire — it exists only to catch a genuine engine bug.
+MAX_STEPS = 130
 
 
 def encode_observation(state: Board) -> np.ndarray:

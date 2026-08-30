@@ -114,9 +114,10 @@ class DQNTrainer:
                 next_v = masked_q(next_q_target, next_masks).gather(1, next_actions).squeeze(1)
             else:
                 next_v = masked_q(next_q_target, next_masks).max(dim=1).values
-            # if next state has no legal actions it is terminal -> masked_q is all
-            # NEG_INF; dones guard handles the value anyway
-            next_v = torch.nan_to_num(next_v, neginf=0.0)
+            # A terminal next_obs has an all-False mask -> next_v is the NEG_INF
+            # sentinel, but every such transition also has done==1, so the
+            # (1 - dones) factor zeroes it out. Clamp as belt-and-braces.
+            next_v = torch.where(dones.bool(), torch.zeros_like(next_v), next_v)
             target = rewards + self.cfg.gamma * (1.0 - dones) * next_v
 
         loss = F.smooth_l1_loss(q, target)

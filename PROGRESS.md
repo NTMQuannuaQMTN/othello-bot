@@ -3,11 +3,59 @@
 _Last updated: 2026-08-29_
 
 ## Current phase
-Phases 1–10 complete and validated. Remaining work is the optional future
-AlphaZero-style upgrade (`docs/alphazero-plan.md`).
+Phases 1–10 complete and validated. Post-audit hardening done (see below).
+Remaining work is the optional future AlphaZero-style upgrade
+(`docs/alphazero-plan.md`).
 
 ## Current task
 None in flight.
+
+---
+
+## AUDIT (2026-08-29)
+
+Full codebase re-audit against `PROJECT_SPEC.md`. The repository was inspected
+file by file; the engine and RL env were re-verified with fresh adversarial
+checks (not just the existing tests).
+
+### Subsystem status
+
+| Subsystem | Status | Evidence |
+|---|---|---|
+| Othello game engine | **Verified** | 128 integration games across all baseline agent pairs with per-ply delta / flip-count invariants (0 failures); dihedral (rotation+reflection) equivariance of legal moves and flip sets; adversarial `flips_for_move` inputs (off-board, occupied, no-bracket, numpy ints); consecutive-pass / full-board / all-one-colour terminal detection; 200-game fuzz. |
+| Baseline agents | **Verified** | All 4 agents always return legal moves & handle pass states (integration sweep); Greedy max-flips + deterministic tie-break; Heuristic perspective antisymmetry; **Minimax alpha-beta value == full unpruned negamax value** (5 seeds); minimax takes an immediate win. |
+| Evaluation system | **Verified** | Reproducibility (identical `MatchResult` for a fixed seed); colour alternation; Wilson CI width vs n; internal Elo orders A>B>C and anchors correctly; report JSON/MD/PNG. Fixed: Elo now reads the recorded per-game colour instead of re-deriving it. |
+| RL environment | **Verified** | Canonical `(3,8,8)` obs equals `encode_observation` for the learner at every step (150 episodes, both colours, 3 opponents); reward sign correct vs a referee (0 mismatches); sparse (0 mid-game); `terminated`/`truncated` never truncates a real game. |
+| RL agent (DQN) | **Verified** | Masked greedy / eps-greedy only picks legal actions; `masked_q` sentinel; checkpoint round-trip (params + meta); `clone_network` is a frozen independent copy; forced-pass handled. |
+| Training pipeline | **Verified** | Trainer smoke (finite loss, buffer fills, episodes advance); **bit-for-bit deterministic given a seed**; target-sync; eps schedule monotone; curriculum smoke writes metrics + checkpoints + resumes across stages. Empirically: Phase-6 curriculum learns (see Completed). |
+| Self-play | **Verified** | Pool fallback / configurable distribution / recent-capacity / historical promotion; frozen snapshot independence; anti-forgetting eval; self-play smoke. Empirically validated (see Completed). |
+| Checkpoint system | **Verified** | `DQNAgent.save/load/from_checkpoint` round-trip; forward-compatible `net_config` (missing `norm` key defaults); curriculum keeps per-stage + per-N-step checkpoints (never overwrites); bot fine-tune keeps `webapp_state/history/vNNNN.pt`. |
+| Evaluation / metrics | **Verified** | `evaluate_agent`, `flatten_eval`, `tracking.track_checkpoints` (per-checkpoint win rate + round-robin internal Elo + curves), `MetricLogger` JSONL/CSV, experiment metadata (git commit + versions). |
+
+Nothing was found that is "implemented but incorrect". The issues fixed in this
+pass (below) were latent footguns / robustness gaps, not active miscomputation —
+the empirical training results in `experiments/` stand.
+
+### Fixed in the audit pass
+- **`Board.__init__` aliased/froze the caller's array** (`np.asarray` on an
+  already-int8 array returns it unchanged, then `writeable=False` mutated the
+  caller's object). Now always takes an owned copy; internal transitions use a
+  fast `_own=True` path so the hot loop is unaffected. Regression tests added.
+- **`OthelloEnv.MAX_STEPS` was 80** — an Othello game can reach 120 plies
+  (60 placements + up to 60 interleaved passes); a pathological long game would
+  have been silently truncated with reward 0. Raised to 130; test asserts
+  `>= 120` and that 120 random episodes never truncate.
+- **`ratings_from_matches` re-derived each game's colour from `g_idx % 2`**
+  instead of the actual assignment — silently wrong for
+  `alternate_colors=False`. `GameResult` now records `a_is_black` / `a_score()`;
+  Elo reads it (with a fallback for old results). Regression test added.
+- **`FixedOpponentEnv.reset`** could return a terminal state if a very long
+  random opening finished the game, tripping the next-step assertion. Now
+  retries. Test with `opening_plies=58` added.
+- Dead code removed (`_rollout` `pending`), misleading `nan_to_num` in the
+  trainer replaced with an explicit `dones` mask.
+- Removed an orphan/aborted committed run dir
+  (`experiments/20260828-234251_dqn_curriculum`, baseline eval only).
 
 ## Phase 10 — Web app (play / fine-tune / analysis)
 - Python JSON API (`scripts/serve.py`, stdlib `http.server`) + a **React + Vite**
@@ -47,15 +95,61 @@ None in flight.
 All results: `experiments/RESULTS.md`.
 
 ## Test status
-`python3 -m pytest` → 136 passed.
+`python3 -m pytest` → **145 passed** (~28 s). +9 regression tests from the audit.
 
-## Known issues
-- Python 3.9.6 only; deps `--user`; run `python3 -m pytest`.
-- CPU-only; a full curriculum run is ~3–4 h. DQN eval win rates noisy at 60–100
-  games — trust multi-eval trends and the internal-Elo curve.
-- Agent beats Random / Greedy decisively but is still ~0.35 vs the hand-written
-  Heuristic and untested vs Minimax; closing that gap is the AlphaZero phase.
+Extra verification run this pass (ad-hoc scripts, not in the suite): all-agent-pair
+integration sweep with per-ply invariants; dihedral symmetry; RL-env reward-sign
+referee check over 150 episodes — all clean.
+
+---
+
+# Known Issues
+
+## Critical
+- _(none)_
+
+## Bugs
+- _(none open — the five latent issues found in the audit are fixed and have
+  regression tests; see the AUDIT section)_
+
+## Missing Test Coverage
+- [ ] `evaluation/report.py` `write_plot` / `write_markdown` exercised only via
+      `test_report.py::test_generate_report_writes_files`; no assertion on the
+      markdown table contents.
+- [ ] `utils/experiment.py::git_commit` not tested outside a git checkout
+      (returns `None` — low value).
+- [ ] `webapp/bot_service.finetune_from_game` not asserted to be *reproducible*
+      (it is, by construction: seeded buffer + seeded sampling).
+- [ ] No test drives `scripts/track.py` on real multi-stage checkpoints (only a
+      2-checkpoint smoke).
+
+## Technical Debt
+- [ ] `OpponentPool.snapshot_state()` is effectively dead (no restore path,
+      not used outside its own unit test). Either wire up restore or drop it.
+- [ ] `webapp/moves.py::replay_positions` is now only used by its own test
+      (`analyse_line` supersedes it). Harmless helper; keep or remove.
+- [ ] `MinimaxAgent.search_value` doesn't reset `self.nodes` (diagnostic only).
+- [ ] `bot_service._train` recreates the Adam optimizer every call (intentional
+      for independent nudges, but worth a comment).
+- [ ] `configs/*.yaml` and dataclass defaults duplicate hyperparameters; the
+      config is the source of truth for scripts but tests use dataclass defaults.
+
+## Potential Risks
+- CPU-only + pure-Python engine: a full curriculum run is ~3–4 h. Sized configs
+  accordingly; not a correctness risk.
+- DQN eval win rates are noisy at 60–100 games/eval — always read multi-eval
+  trends and the internal-Elo curve, never a single point.
+- The trained agent beats Random/Greedy decisively but is only ~0.2–0.36 vs the
+  hand-written Heuristic and is **untested vs Minimax**. Closing that gap needs
+  the AlphaZero-style upgrade (`docs/alphazero-plan.md`), not more DQN tuning.
+- Internal Elo is a crude iterative fit (not Bradley-Terry MLE) — fine for
+  within-project ordering, must never be quoted as an external rating.
+
+## Environment
+- Python 3.9.6 only; deps installed `--user` into `~/Library/Python/3.9`; run
+  tests with `python3 -m pytest` (console script may not be on PATH).
 
 ## Next action (optional / future)
-1. Hyperparameter pass on the DQN (γ=1.0, longer ε schedule, bigger net).
+1. Hyperparameter pass on the DQN (γ=1.0, longer ε schedule, bigger net) and an
+   eval vs Minimax depths 1–3.
 2. Implement `docs/alphazero-plan.md` (Policy+Value net, MCTS, gated self-play).

@@ -78,15 +78,14 @@ def ratings_from_matches(matches, k: float = 24.0, passes: int = 25,
 
     records: List[Tuple[str, str, float]] = []
     for m in matches:
-        # Reconstruct per-game A-scores from stored GameResults + alternation.
         for g_idx, gr in enumerate(m.games):
-            a_is_black = (g_idx % 2 == 0)
-            if gr.winner == 0:
-                score_a = 0.5
-            elif (gr.winner == BLACK) == a_is_black:
-                score_a = 1.0
-            else:
-                score_a = 0.0
+            score_a = gr.a_score()
+            if score_a is None:
+                # older GameResult without a recorded colour: fall back to the
+                # play_match alternation convention (A is Black on even games)
+                a_is_black = (g_idx % 2 == 0)
+                score_a = (0.5 if gr.winner == 0
+                           else (1.0 if (gr.winner == BLACK) == a_is_black else 0.0))
             records.append((m.name_a, m.name_b, score_a))
     model = EloModel(k=k, anchor=anchor)
     return model.fit(records, passes=passes, seed=seed)

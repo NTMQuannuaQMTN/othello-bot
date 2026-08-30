@@ -376,7 +376,6 @@ class OthelloBot:
         """Play one game (greedy bot vs opp) and yield bot-perspective
         transitions (obs, action, reward, next_obs, done, next_mask)."""
         state = Board.initial()
-        pending = None  # (obs, action, mask_next placeholder)
         transitions = []
         while not state.is_terminal():
             if state.player == bot_color:

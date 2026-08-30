@@ -72,6 +72,26 @@ def test_ratings_from_matches_greedy_above_random():
     assert model.rating("greedy") > model.rating("random")
 
 
+def test_game_result_records_colour_and_a_score():
+    m = play_match("greedy", "random", num_games=8, seed=3)
+    # play_match must stamp the colour on every game
+    assert all(g.a_is_black is not None for g in m.games)
+    assert [g.a_is_black for g in m.games] == [True, False] * 4
+    # a_score matches wins/losses/draws bookkeeping
+    total = sum(g.a_score() for g in m.games)
+    assert total == pytest.approx(m.a_score)
+
+
+def test_ratings_from_matches_correct_when_colours_not_alternated():
+    # regression: with alternate_colors=False every game has A as Black; Elo must
+    # read the recorded colour, not assume alternation.
+    m = play_match("greedy", "random", num_games=30, seed=1, alternate_colors=False)
+    assert all(g.a_is_black for g in m.games)
+    model = ratings_from_matches([m])
+    # greedy (as Black every game) clearly beats random -> higher rating
+    assert model.rating("greedy") > model.rating("random") + 50
+
+
 def test_elo_anchor_pins_rating():
     games = [("A", "B", 1.0)] * 30
     model = EloModel(k=16, anchor="B").fit(games, passes=10)
