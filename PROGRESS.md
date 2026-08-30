@@ -1,14 +1,15 @@
 # Progress
 
-_Last updated: 2026-08-29_
+_Last updated: 2026-08-30_
 
 ## Current phase
-Phases 1–10 complete and validated. Post-audit hardening done (see below).
-Remaining work is the optional future AlphaZero-style upgrade
-(`docs/alphazero-plan.md`).
+Phases 1–10 complete and validated. Full spec audit done (see AUDIT below):
+5 latent issues fixed with regressions; 2 spec-gap features added
+(`scripts/eval_bot.py` standard protocol incl. Minimax; resumable self-play).
 
 ## Current task
-None in flight.
+None in flight. Foundation is verified and stable. The only remaining work is
+the optional AlphaZero-style upgrade (`docs/alphazero-plan.md`).
 
 ---
 
@@ -95,7 +96,8 @@ the empirical training results in `experiments/` stand.
 All results: `experiments/RESULTS.md`.
 
 ## Test status
-`python3 -m pytest` → **145 passed** (~28 s). +9 regression tests from the audit.
+`python3 -m pytest` → **150 passed** (~30–40 s). +11 regression/feature tests
+this session (audit fixes + `eval_bot` + resumable self-play).
 
 Extra verification run this pass (ad-hoc scripts, not in the suite): all-agent-pair
 integration sweep with per-ply invariants; dihedral symmetry; RL-env reward-sign
