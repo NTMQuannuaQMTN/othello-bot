@@ -108,7 +108,15 @@ button.primary:disabled { opacity: .5; cursor: progress; }
 .eval-graph .cursor { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
 
 .analysis-summary { margin-bottom: 10px; font-size: 12.5px; color: var(--muted); }
-.analysis-summary div { margin: 2px 0; }
+.analysis-summary > div { margin: 6px 0; }
+.analysis-summary .strategy { font-size: 11.5px; opacity: .85; margin: 1px 0 0 14px; }
+
+.learn-from { display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  margin: 4px 0 10px; }
+.learn-from button { background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 11px; font-weight: 600; }
+.learn-from button:hover:not(:disabled) { border-color: var(--accent); }
+.learn-from button:disabled { opacity: .5; cursor: progress; }
 
 .gameover { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .go-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0; }

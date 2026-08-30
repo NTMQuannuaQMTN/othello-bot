@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import BoardArea from "./BoardArea.jsx";
 import EvalGraph from "./EvalGraph.jsx";
 import MoveList from "./MoveList.jsx";
+import FineTuneResult from "./FineTuneResult.jsx";
 import { api, sanToIdx } from "../api.js";
 
 const SUMMARY_ORDER = ["Blunder", "Mistake", "Inaccuracy", "Good", "Excellent", "Best"];
 const EMPTY = { positions: [startPosition()], plies: [], eval_graph: [{ ply: -1, eval_black: 0.5 }], summary: { black: {}, white: {} } };
 
-export default function AnalysisPanel({ loadLine }) {
+export default function AnalysisPanel({ loadLine, onBotChanged }) {
   const [line, setLine] = useState([]);
   const [cursor, setCursor] = useState(0);
   const [data, setData] = useState(EMPTY);
@@ -15,6 +16,18 @@ export default function AnalysisPanel({ loadLine }) {
   const [error, setError] = useState(null);
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
+  const [ft, setFt] = useState({ report: null, error: null, running: null });
+
+  async function learnFrom(color) {
+    setFt({ report: null, error: null, running: color });
+    try {
+      const report = await api("/finetune", { moves: line, learn_color: color });
+      setFt({ report, error: null, running: null });
+      onBotChanged?.();
+    } catch (e) {
+      setFt({ report: null, error: e.message, running: null });
+    }
+  }
 
   const analyse = useCallback(async (moves) => {
     setBusy(true);
@@ -168,18 +181,44 @@ export default function AnalysisPanel({ loadLine }) {
           {["black", "white"].map((side) => {
             const c = data.summary[side] || {};
             const parts = SUMMARY_ORDER.filter((k) => c[k]);
+            const s = data.strategy?.[side];
             return (
               <div key={side}>
-                {side === "black" ? "⚫ Black" : "⚪ White"}:{" "}
-                {parts.length
-                  ? parts.map((k) => (
-                      <span key={k}><b className={"label " + k}>{c[k]}</b> {k}&nbsp;&nbsp;</span>
-                    ))
-                  : "—"}
+                <div>
+                  {side === "black" ? "⚫ Black" : "⚪ White"}:{" "}
+                  {parts.length
+                    ? parts.map((k) => (
+                        <span key={k}><b className={"label " + k}>{c[k]}</b> {k}&nbsp;&nbsp;</span>
+                      ))
+                    : "—"}
+                </div>
+                {s && s.moves > 0 && (
+                  <div className="strategy">
+                    accuracy {Math.round(s.accuracy * 100)}% · {s.corners} corner
+                    {s.corners === 1 ? "" : "s"}
+                    {s.x_squares ? ` · ${s.x_squares} X-square${s.x_squares === 1 ? "" : "s"}` : ""}
+                    {" "}· {s.edges} edge · avg {s.avg_mobility} moves free · {s.final_discs} discs
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
+
+        {line.length > 3 && (
+          <div className="learn-from">
+            <span className="alt">Teach the bot this game:</span>
+            <button disabled={!!ft.running} onClick={() => learnFrom("black")}>
+              {ft.running === "black" ? "learning…" : "Learn ⚫ Black's play"}
+            </button>
+            <button disabled={!!ft.running} onClick={() => learnFrom("white")}>
+              {ft.running === "white" ? "learning…" : "Learn ⚪ White's play"}
+            </button>
+          </div>
+        )}
+        {(ft.report || ft.error) && (
+          <FineTuneResult report={ft.report} error={ft.error} />
+        )}
 
         <MoveList
           items={data.plies.map((p) => {

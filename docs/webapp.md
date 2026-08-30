@@ -61,6 +61,15 @@ An **interactive analysis board** — you don't type moves, you play them:
 The **eval graph** is the bot's win-probability for Black across the line (see the
 note below on why it's blended with a positional score).
 
+Below the graph, a **strategy read-out** per side: move-quality counts +
+`accuracy` (fraction of Good-or-better moves), corners / X-squares / edge moves
+played, average mobility, disc count.
+
+**Teach the bot this game** — *Learn ⚫ Black's play* / *Learn ⚪ White's play*
+runs the same fine-tune as the Play tab but on the chosen side's moves. Point it
+at a strong player's game and the bot's Best/Excellent moves for that side get
+reinforced (`POST /api/finetune {moves, learn_color}`).
+
 ### How a move is graded
 
 The DQN's raw action-values are only weakly separated, so a move's **regret** is a
@@ -158,8 +167,8 @@ Commands: `genmove <transcript>`, `eval <transcript>`, `name`, `quit`.
 | `POST /api/move` | `{action, bot_reply?}` | state after your move (+ the bot's reply unless `bot_reply:false`) |
 | `POST /api/bot_move` | `{}` | state after the bot moves (bot plays first / deferred reply) |
 | `GET /api/eval` | | the bot's read of the current game position |
-| `POST /api/analyse` | `{moves` \| `transcript` \| `history_actions}` | `positions[]` (grid + legal moves + eval per ply boundary), `plies[]` (move grades), `eval_graph`, `summary` |
-| `POST /api/finetune` | `{}` or `{moves, human_color}` | fine-tune report + move grades |
+| `POST /api/analyse` | `{moves` \| `transcript` \| `history_actions}` | `positions[]`, `plies[]` (move grades), `eval_graph`, `summary`, `strategy` (per-side stats) |
+| `POST /api/finetune` | `{}` or `{moves, learn_color}` | fine-tune from a game, learning `learn_color`'s moves (default: the bot's side) |
 | `GET /api/games` | | `{count, path}` of saved games |
 | `POST /api/finetune_all` | `{}` | fine-tune from every saved game at once |
 | `POST /api/bot/reset` | | restores baseline weights |

@@ -71,7 +71,7 @@ export default function App() {
       {tab === "play" ? (
         <PlayPanel onBotChanged={refreshBot} onAnalyzeGame={analyzeGame} />
       ) : (
-        <AnalysisPanel loadLine={analyzeLine} />
+        <AnalysisPanel loadLine={analyzeLine} onBotChanged={refreshBot} />
       )}
 
       <footer>

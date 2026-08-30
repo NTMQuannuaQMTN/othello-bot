@@ -155,15 +155,20 @@ def make_handler(app: AppState):
 
     @route("POST /api/finetune")
     def _finetune(body):
+        """Fine-tune from a game. ``learn_color`` = which side's moves to learn
+        from; defaults to the bot's colour in the current session (Play tab)."""
         if body.get("moves") or body.get("transcript") or body.get("history_actions"):
             actions = parse_game(body)
-            human_color = body.get("human_color", app.session.state()["human_color"])
         else:
-            st = app.session.state()
-            actions = list(st["history_actions"])
-            human_color = st["human_color"]
-        report = app.bot.finetune_from_game(actions, human_color)
-        return asdict(report)
+            actions = list(app.session.state()["history_actions"])
+        learn_color = body.get("learn_color")
+        if not learn_color:
+            human = app.session.state()["human_color"]
+            learn_color = "white" if human == "black" else "black"  # the bot's side
+        report = app.bot.finetune_from_game(actions, learn_color)
+        d = asdict(report)
+        d["learn_color"] = learn_color
+        return d
 
     @route("POST /api/bot/reset")
     def _reset(_):

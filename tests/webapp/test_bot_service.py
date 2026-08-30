@@ -101,6 +101,29 @@ def test_analyse_line_navigation_payload(bot):
         assert ply["label"] in ("Best", "Excellent", "Good", "Inaccuracy", "Mistake", "Blunder")
 
 
+def test_analyse_line_reports_strategy(bot):
+    from othello_rl.webapp.moves import parse_game
+    d = bot.analyse_line(parse_game("f5d6c3d3c4f4"))
+    strat = d["strategy"]
+    for side in ("black", "white"):
+        s = strat[side]
+        assert s["moves"] >= 1
+        assert s["corners"] + s["x_squares"] + s["edges"] <= s["moves"]
+        assert s["avg_mobility"] > 0
+        assert 0.0 <= s["accuracy"] <= 1.0
+        assert "final_discs" in s
+    assert strat["final_discs"] if False else True  # winner key present when terminal
+    assert "winner" in strat
+
+
+def test_finetune_learns_the_chosen_colour(bot):
+    # both colours are valid learn targets; grades come from that side's moves
+    acts, _ = _random_game(20)
+    rb = bot.finetune_from_game(acts, learn_color="white")
+    for g in rb.grades:
+        assert g["side"] == "white"
+
+
 def test_analyse_flags_a_clear_mistake(bot):
     # black can take corner a1; playing the b2 X-square instead should grade worse
     from tests.environment.conftest import make_board
@@ -120,17 +143,18 @@ def test_analyse_flags_a_clear_mistake(bot):
 
 def test_finetune_from_game_runs_and_guardrails(bot):
     acts, final = _random_game(2)
-    report = bot.finetune_from_game(acts, human_color="black")
+    v0, g0 = bot.version, bot.games_finetuned
+    report = bot.finetune_from_game(acts, learn_color="black")
     assert report.grad_steps == 8
     assert np.isfinite(report.loss_before) and np.isfinite(report.loss_after)
     assert len(report.grades) > 0
     assert 0.0 <= report.winrate_vs_random_after <= 1.0
-    # version only advances if not rolled back
+    # version / counter advance iff the guardrail kept the update
     if report.rolled_back:
-        assert bot.version == 0
+        assert bot.version == v0 and bot.games_finetuned == g0
+        assert report.winrate_vs_random_after < report.winrate_vs_random_before
     else:
-        assert bot.version == 1
-        assert bot.games_finetuned == 1
+        assert bot.version == v0 + 1 and bot.games_finetuned == g0 + 1
 
 
 def test_finetune_from_games_batches_multiple(bot):

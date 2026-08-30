@@ -302,10 +302,16 @@ class OthelloBot:
         """Analysis of a line for the interactive (Lichess-style) analysis board:
         one position payload per ply boundary (index 0 = start), plus the grade of
         every played move, an eval graph and a per-side summary."""
+        _CORNERS = {(0, 0), (0, 7), (7, 0), (7, 7)}
+        _XSQ = {(1, 1), (1, 6), (6, 1), (6, 6)}
         with self._lock:
             state = Board.initial()
             positions = [self._position_payload(state)]
             plies: List[MoveAnalysis] = []
+            strat = {"black": {"corners": 0, "x_squares": 0, "edges": 0,
+                               "mobility": [], "moves": 0},
+                     "white": {"corners": 0, "x_squares": 0, "edges": 0,
+                               "mobility": [], "moves": 0}}
             for ply, a in enumerate(actions):
                 a = int(a)
                 if state.is_terminal():
@@ -318,6 +324,19 @@ class OthelloBot:
                 q = g["q"]
                 ranked = sorted(g["legal"], key=lambda x: -q[x])
                 best = g["bot_best"]
+
+                side = _side(state.player)
+                rc = divmod(a, 8)
+                sd = strat[side]
+                sd["moves"] += 1
+                sd["mobility"].append(len(g["legal"]))
+                if rc in _CORNERS:
+                    sd["corners"] += 1
+                elif rc in _XSQ and state.array[_nearest_corner(rc)] == 0:
+                    sd["x_squares"] += 1
+                elif rc[0] in (0, 7) or rc[1] in (0, 7):
+                    sd["edges"] += 1
+
                 nxt = state.apply(a)
                 pos = self._position_payload(nxt)
                 positions.append(pos)
@@ -341,6 +360,20 @@ class OthelloBot:
                 summary[p.side][p.label] = summary[p.side].get(p.label, 0) + 1
             graph = [{"ply": i - 1, "eval_black": positions[i]["eval"]["winprob_black"]}
                      for i in range(len(positions))]
+
+            final = positions[-1]
+            fb, fw = final["score"]["black"], final["score"]["white"]
+            for side in ("black", "white"):
+                sd = strat[side]
+                mob = sd.pop("mobility")
+                sd["avg_mobility"] = round(sum(mob) / len(mob), 1) if mob else 0.0
+                sd["accuracy"] = round(
+                    sum(1 for p in plies if p.side == side and p.label in ("Best", "Excellent", "Good"))
+                    / max(1, sd["moves"]), 2)
+            strat["black"]["final_discs"] = fb
+            strat["white"]["final_discs"] = fw
+            strat["winner"] = final.get("winner")
+
             return {
                 "actions": [int(a) for a in actions[:len(positions) - 1]],
                 "n_moves": len(positions) - 1,  # plies incl. passes
@@ -348,6 +381,7 @@ class OthelloBot:
                 "plies": [asdict(p) for p in plies],
                 "eval_graph": graph,
                 "summary": summary,
+                "strategy": strat,
             }
 
     # -- fine-tuning -----------------------------------------------------
@@ -400,12 +434,12 @@ class OthelloBot:
                 state = state.apply(opp.select_move(state))
         return transitions
 
-    def _build_game_transitions(self, actions: Sequence[int], human_color: str):
-        """Grade the bot's moves in one game and build its DQN transitions
-        (with blunder / best-move shaping). Returns
+    def _build_game_transitions(self, actions: Sequence[int], learn_color: str):
+        """Grade ``learn_color``'s moves in one game and build DQN transitions
+        for them (with blunder / best-move shaping). Returns
         ``(transitions, grades, n_reinforced, n_penalised)``."""
         cfg = self.ft
-        bot_color = WHITE if str(human_color).lower().startswith("b") else BLACK
+        learn_side = BLACK if str(learn_color).lower().startswith("b") else WHITE
         states = [Board.initial()]
         for a in actions:
             a = int(a)
@@ -420,19 +454,19 @@ class OthelloBot:
         for i, a in enumerate(actions):
             a = int(a)
             s = states[i]
-            if s.is_terminal() or s.player != bot_color or not s.legal_moves():
+            if s.is_terminal() or s.player != learn_side or not s.legal_moves():
                 continue
             g = self.grade_move(s, a)
             label, best, coach_a = g["label"], g["bot_best"], g["coach_best"]
 
             j = i + 1
-            while j < len(states) and not states[j].is_terminal() and states[j].player != bot_color:
+            while j < len(states) and not states[j].is_terminal() and states[j].player != learn_side:
                 j += 1
             nxt = states[j] if j < len(states) else states[-1]
             done = nxt.is_terminal()
             r = 0.0
             if done:
-                r = 1.0 if winner == bot_color else (-1.0 if winner == opponent(bot_color) else 0.0)
+                r = 1.0 if winner == learn_side else (-1.0 if winner == opponent(learn_side) else 0.0)
             obs, next_obs = encode_observation(s), encode_observation(nxt)
             next_mask = legal_action_mask(nxt)
             trans.append((obs, a, r, next_obs, done, next_mask))
@@ -489,24 +523,29 @@ class OthelloBot:
             rolled_back=rolled_back, grades=grades,
         )
 
-    def finetune_from_game(self, actions: Sequence[int], human_color: str,
+    def finetune_from_game(self, actions: Sequence[int], learn_color: str,
                            progress=None) -> FineTuneReport:
+        """Fine-tune from one game, learning ``learn_color``'s moves."""
         with self._lock:
-            trans, grades, n_reinf, n_pen = self._build_game_transitions(actions, human_color)
+            trans, grades, n_reinf, n_pen = self._build_game_transitions(actions, learn_color)
             return self._run_finetune(trans, grades, n_reinf, n_pen, progress)
 
     def finetune_from_games(self, games: Sequence[dict], progress=None) -> FineTuneReport:
         """Fine-tune from many recorded games at once (one training pass, one
-        guardrail check). Each game dict needs ``moves``/``actions`` and
-        ``human_color``."""
+        guardrail check). For each game the bot learns *its own* moves
+        (``learn_color`` = the opposite of the recorded ``human_color``)."""
         with self._lock:
             all_trans: List[tuple] = []
             all_grades: List[dict] = []
             n_reinf = n_pen = 0
             for gi, game in enumerate(games):
                 actions = game.get("moves") or game.get("actions") or []
-                hc = game.get("human_color", "black")
-                t, gr, nr, np_ = self._build_game_transitions(actions, hc)
+                if game.get("learn_color"):
+                    lc = game["learn_color"]
+                else:
+                    hc = str(game.get("human_color", "white")).lower()
+                    lc = "white" if hc.startswith("b") else "black"
+                t, gr, nr, np_ = self._build_game_transitions(actions, lc)
                 all_trans += t
                 for row in gr:
                     row["game"] = gi
@@ -604,6 +643,10 @@ class OthelloBot:
 # --------------------------------------------------------------------------- #
 def _side(player: int) -> str:
     return "black" if player == BLACK else "white"
+
+
+def _nearest_corner(rc: Tuple[int, int]) -> Tuple[int, int]:
+    return (0 if rc[0] < 4 else 7, 0 if rc[1] < 4 else 7)
 
 
 def _san(action: int) -> str:
