@@ -1,6 +1,6 @@
 import Board from "./Board.jsx";
 
-export default function BoardArea({ evalBlack = 0.5, status, ...boardProps }) {
+export default function BoardArea({ evalBlack = 0.5, status, footer, ...boardProps }) {
   const pct = Math.round((evalBlack ?? 0.5) * 100);
   const boardHeight = 8 * 54 + 12;
   return (
@@ -13,6 +13,7 @@ export default function BoardArea({ evalBlack = 0.5, status, ...boardProps }) {
         <Board {...boardProps} />
       </div>
       <div className="status">{status}</div>
+      {footer}
     </div>
   );
 }

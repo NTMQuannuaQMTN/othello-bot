@@ -76,6 +76,22 @@ class GameSession:
             self._apply(a)
             self.last_bot_moves.append(a)
 
+    def _move_log(self) -> List[dict]:
+        """Per-move record: number, SAN, side, and who played it (you / bot)."""
+        log: List[dict] = []
+        b = Board.initial()
+        for i, a in enumerate(self.history):
+            side = _side(b.player)
+            log.append({
+                "n": i + 1,
+                "san": _san(a),
+                "side": side,
+                "by": "you" if b.player == self.human_color else "bot",
+                "pass": a == PASS_ACTION,
+            })
+            b = b.apply(None if a == PASS_ACTION else action_to_rc(a))
+        return log
+
     # -- serialisation --------------------------------------------
     def state(self) -> dict:
         b = self.board
@@ -94,6 +110,7 @@ class GameSession:
             "score": {"black": black, "white": white},
             "history": [_san(a) for a in self.history],
             "history_actions": list(self.history),
+            "moves": self._move_log(),
             "last_bot_moves": [_san(a) for a in self.last_bot_moves],
             "ply": len(self.history),
             "level": self.level,

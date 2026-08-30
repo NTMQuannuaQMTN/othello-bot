@@ -91,15 +91,10 @@ export default function AnalysisPanel() {
 
   // board decorations
   const engineMoves = pos.eval && pos.eval.moves ? pos.eval.moves : [];
-  const best = engineMoves.length ? engineMoves[0].action : null;
+  // ALWAYS highlight the bot's top move among all legal moves at this position
+  const bestForBoard = pos.terminal || !engineMoves.length ? null : engineMoves[0].action;
   const glyphs = {};
-  let bestForBoard = pos.terminal ? null : best;
-  if (ply) {
-    glyphs[ply.played] = { label: ply.label, glyph: ply.glyph };
-    if (ply.best !== ply.played) bestForBoard = ply.best;
-    else if (ply.label !== "Best" && ply.label !== "Excellent")
-      bestForBoard = sanToIdx(ply.coach_best_san);
-  }
+  if (ply) glyphs[ply.played] = { label: ply.label, glyph: ply.glyph };
 
   const status = statusLine(pos, ply, engineMoves);
 
@@ -114,6 +109,14 @@ export default function AnalysisPanel() {
         onMove={play}
         evalBlack={graphPoints[cursor]}
         status={status}
+        footer={!pos.terminal && engineMoves.length > 0 && (
+          <div className="board-legend">
+            <span><i className="lg-best" /> best move
+              {` — ${engineMoves[0].san} (${Math.round(engineMoves[0].winprob * 100)}%)`}</span>
+            {ply && ply.played !== engineMoves[0].action &&
+              <span><i className="lg-last" /> you played {ply.played_san}</span>}
+          </div>
+        )}
       />
 
       <section className="panel">

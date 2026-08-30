@@ -85,6 +85,7 @@ def test_play_and_analyse_flow(server):
 
     st = _call(server, "/api/new", {"human_color": "black"})
     assert st["your_turn"] and len(st["legal_actions"]) == 4
+    assert st["moves"] == []  # no moves yet
 
     import random
     rng = random.Random(3)
@@ -94,6 +95,17 @@ def test_play_and_analyse_flow(server):
         else:
             st = _call(server, "/api/bot_move")
     assert st["winner"] in ("black", "white", "draw")
+
+    # per-move log: numbered, correct side (accounts for passes), who played it
+    log = st["moves"]
+    assert len(log) == st["ply"]
+    assert [m["n"] for m in log] == list(range(1, len(log) + 1))
+    assert log[0]["side"] == "black" and log[0]["by"] == "you"  # human is black, moves first
+    for m in log:
+        assert m["side"] in ("black", "white") and m["by"] in ("you", "bot")
+    # a bot move is by the bot and by white (human is black)
+    bot_moves = [m for m in log if m["by"] == "bot"]
+    assert bot_moves and all(m["side"] == "white" for m in bot_moves)
 
     an = _call(server, "/api/analyse", {"history_actions": st["history_actions"]})
     assert len(an["eval_graph"]) == an["n_moves"] + 1

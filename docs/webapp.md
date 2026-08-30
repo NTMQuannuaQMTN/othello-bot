@@ -28,9 +28,12 @@ Notes:
 
 ## Play tab
 
-Play a full game against the bot (choose your colour). Legal squares are dotted;
-your last move / the bot's last move is outlined. When the game ends you can hit
-**Fine-tune bot from this game** (see below).
+- Start by choosing your colour — **Black / White / Random** (Black moves first).
+  `?play=black` (or `white` / `random`) skips the chooser.
+- Legal squares are dotted; your / the bot's last move is outlined.
+- A numbered **move history** (side + `you`/`bot`, passes shown) scrolls alongside
+  the board; the current game survives a page refresh.
+- When the game ends: **Fine-tune bot from this game** (see below).
 
 ## Analysis tab (Lichess-analysis style)
 
@@ -39,8 +42,9 @@ An **interactive analysis board** — you don't type moves, you play them:
 - legal moves are shown as dots; click a square to add it to the line;
 - **`bot likes: c4 70% · f5 70% · …`** lists the bot's top moves for the current
   position (click one to play it);
-- the bot's best move is outlined with a dashed box; after a move is played it's
-  graded (Best / Excellent / Good / Inaccuracy `?!` / Mistake `?` / Blunder `??`);
+- the bot's **best move is always outlined with a dashed box** (with a legend
+  under the board); the move you actually played is outlined in blue and graded
+  (Best / Excellent / Good / Inaccuracy `?!` / Mistake `?` / Blunder `??`);
 - navigate with ⏮ ◀ ▶ ⏭, the arrow keys, or by clicking the eval graph / move
   list; **take back** (or Backspace) pops the last move; playing a move while
   viewing an earlier position replaces the continuation from there;

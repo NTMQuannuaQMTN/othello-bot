@@ -3,43 +3,71 @@ import BoardArea from "./BoardArea.jsx";
 import FineTuneResult from "./FineTuneResult.jsx";
 import { api, cap, sanToIdx } from "../api.js";
 
+const INITIAL_GRID = (() => {
+  const g = Array.from({ length: 8 }, () => Array(8).fill(0));
+  g[3][3] = -1; g[3][4] = 1; g[4][3] = 1; g[4][4] = -1;
+  return g;
+})();
+
 export default function PlayPanel({ onBotChanged }) {
-  const [game, setGame] = useState(null);
-  const [color, setColor] = useState("black");
+  const [game, setGame] = useState(null);   // null until a game is started
+  const [apiReady, setApiReady] = useState(false);
   const [evalBlack, setEvalBlack] = useState(0.5);
   const [busy, setBusy] = useState(false);
   const [ft, setFt] = useState({ report: null, error: null, running: false });
   const busyRef = useRef(false);
+  const movesEndRef = useRef(null);
+
+  // wait for the API; adopt an in-progress game; honour ?play=black|white|random
+  useEffect(() => {
+    let stop = false;
+    const auto = new URLSearchParams(location.search).get("play");
+    const ping = async () => {
+      try {
+        await api("/bot");
+        if (stop) return;
+        setApiReady(true);
+        if (auto && ["black", "white", "random"].includes(auto)) {
+          startGame(auto);
+          return;
+        }
+        const st = await api("/state");           // resume a game across refreshes
+        if (!stop && st.ply > 0 && !st.game_over) {
+          setGame(st);
+          refreshEval();
+        }
+      } catch {
+        if (!stop) setTimeout(ping, 2000);
+      }
+    };
+    ping();
+    return () => { stop = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const refreshEval = useCallback(async () => {
     try {
       const e = await api("/eval");
       setEvalBlack(e.winprob_black ?? 0.5);
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
   }, []);
 
-  const newGame = useCallback(async () => {
+  async function startGame(humanColor) {
+    setBusy(true);
     setFt({ report: null, error: null, running: false });
-    const st = await api("/new", { human_color: color });
-    setGame(st);
-    refreshEval();
-  }, [color, refreshEval]);
+    try {
+      const st = await api("/new", { human_color: humanColor });
+      setGame(st);
+      refreshEval();
+    } catch (e) {
+      setFt({ report: null, error: e.message, running: false });
+    } finally {
+      setBusy(false);
+    }
+  }
 
-  // start a game on mount; if the API isn't up yet, keep retrying until it is
   useEffect(() => {
-    let stop = false;
-    const start = async () => {
-      try {
-        if (!stop) await newGame();
-      } catch {
-        if (!stop) setTimeout(start, 2500);
-      }
-    };
-    start();
-    return () => { stop = true; };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    movesEndRef.current?.scrollIntoView({ block: "nearest" });
+  }, [game?.ply]);
 
   // auto-pass when the human is on move but has no legal placing move
   useEffect(() => {
@@ -75,8 +103,31 @@ export default function PlayPanel({ onBotChanged }) {
     }
   }
 
-  if (!game) return <main><p>loading…</p></main>;
+  /* ---------- choose-colour screen ---------- */
+  if (!game) {
+    return (
+      <main>
+        <BoardArea grid={INITIAL_GRID} evalBlack={0.5}
+          status="Choose your colour to start." />
+        <section className="panel">
+          <h2 className="start-title">New game</h2>
+          <p className="hint">Black moves first.</p>
+          <div className="color-choice">
+            <button className="primary" disabled={!apiReady || busy}
+              onClick={() => startGame("black")}>Play as Black ⚫</button>
+            <button disabled={!apiReady || busy}
+              onClick={() => startGame("white")}>Play as White ⚪</button>
+            <button disabled={!apiReady || busy}
+              onClick={() => startGame("random")}>Random</button>
+          </div>
+          {!apiReady && <p className="hint">waiting for the bot API…</p>}
+          {ft.error && <p className="error">{ft.error}</p>}
+        </section>
+      </main>
+    );
+  }
 
+  /* ---------- in-game ---------- */
   const lastMoves = (game.last_bot_moves || []).map(sanToIdx).filter((x) => x >= 0);
   let status;
   if (game._err) status = <span className="error">{game._err}</span>;
@@ -85,6 +136,8 @@ export default function PlayPanel({ onBotChanged }) {
       ? "Draw."
       : `${cap(game.winner)} wins ${game.score.black}–${game.score.white}.`;
   else status = game.your_turn ? "Your move." : "Bot thinking…";
+
+  const moves = game.moves || [];
 
   return (
     <main>
@@ -104,21 +157,24 @@ export default function PlayPanel({ onBotChanged }) {
 
       <section className="panel">
         <div className="controls">
-          <label>
-            You play{" "}
-            <select value={color} onChange={(e) => setColor(e.target.value)} disabled={busy}>
-              <option value="black">Black (moves first)</option>
-              <option value="white">White</option>
-              <option value="random">Random</option>
-            </select>
-          </label>
-          <button className="primary" onClick={newGame} disabled={busy}>New game</button>
+          <button className="primary" onClick={() => setGame(null)} disabled={busy}>
+            New game
+          </button>
+          <span className="alt">move {game.ply}</span>
         </div>
 
-        <ol className="move-list">
-          {game.history.map((mv, i) => (
-            <li key={i}>{i % 2 === 0 ? "⚫" : "⚪"} <b>{mv}</b></li>
+        <h3 className="mh-title">Move history</h3>
+        <ol className="game-moves">
+          {moves.length === 0 && <li className="alt">no moves yet</li>}
+          {moves.map((m, i) => (
+            <li key={i} className={i === moves.length - 1 ? "cur" : ""}>
+              <span className="n">{m.n}.</span>
+              <span className="disc">{m.side === "black" ? "⚫" : "⚪"}</span>
+              <span className="san">{m.pass ? "pass" : m.san}</span>
+              <span className="by">{m.by}</span>
+            </li>
           ))}
+          <li ref={movesEndRef} aria-hidden style={{ display: "block", padding: 0, height: 1 }} />
         </ol>
 
         {game.game_over && (
