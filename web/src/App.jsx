@@ -12,6 +12,12 @@ export default function App() {
   );
   const [bot, setBot] = useState(null);
   const [apiDown, setApiDown] = useState(false);
+  const [analyzeLine, setAnalyzeLine] = useState(null); // actions[] to load in Analysis
+
+  const analyzeGame = useCallback((actions) => {
+    setAnalyzeLine({ actions, nonce: Date.now() });
+    setTab("analysis");
+  }, []);
 
   const refreshBot = useCallback(async () => {
     try {
@@ -63,9 +69,9 @@ export default function App() {
       )}
 
       {tab === "play" ? (
-        <PlayPanel onBotChanged={refreshBot} />
+        <PlayPanel onBotChanged={refreshBot} onAnalyzeGame={analyzeGame} />
       ) : (
-        <AnalysisPanel />
+        <AnalysisPanel loadLine={analyzeLine} />
       )}
 
       <footer>

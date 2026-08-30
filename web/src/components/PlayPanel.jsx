@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import BoardArea from "./BoardArea.jsx";
+import MoveList from "./MoveList.jsx";
 import FineTuneResult from "./FineTuneResult.jsx";
 import { api, cap, sanToIdx } from "../api.js";
 
@@ -9,14 +10,39 @@ const INITIAL_GRID = (() => {
   return g;
 })();
 
-export default function PlayPanel({ onBotChanged }) {
-  const [game, setGame] = useState(null);   // null until a game is started
+export default function PlayPanel({ onBotChanged, onAnalyzeGame }) {
+  const [game, setGame] = useState(null);      // null until a game is started
+  const [viewPly, setViewPly] = useState(null); // null = live position
   const [apiReady, setApiReady] = useState(false);
   const [evalBlack, setEvalBlack] = useState(0.5);
   const [busy, setBusy] = useState(false);
   const [ft, setFt] = useState({ report: null, error: null, running: false });
   const busyRef = useRef(false);
-  const movesEndRef = useRef(null);
+
+  const refreshEval = useCallback(async () => {
+    try {
+      const e = await api("/eval");
+      setEvalBlack(e.winprob_black ?? 0.5);
+    } catch { /* ignore */ }
+  }, []);
+
+  const loadGame = useCallback((st) => {
+    setGame(st);
+    setViewPly(null);           // snap back to the live position
+  }, []);
+
+  async function startGame(humanColor) {
+    setBusy(true);
+    setFt({ report: null, error: null, running: false });
+    try {
+      loadGame(await api("/new", { human_color: humanColor }));
+      refreshEval();
+    } catch (e) {
+      setFt({ report: null, error: e.message, running: false });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   // wait for the API; adopt an in-progress game; honour ?play=black|white|random
   useEffect(() => {
@@ -27,15 +53,9 @@ export default function PlayPanel({ onBotChanged }) {
         await api("/bot");
         if (stop) return;
         setApiReady(true);
-        if (auto && ["black", "white", "random"].includes(auto)) {
-          startGame(auto);
-          return;
-        }
-        const st = await api("/state");           // resume a game across refreshes
-        if (!stop && st.ply > 0 && !st.game_over) {
-          setGame(st);
-          refreshEval();
-        }
+        if (auto && ["black", "white", "random"].includes(auto)) { startGame(auto); return; }
+        const st = await api("/state");   // resume/keep the current game across refreshes
+        if (!stop && st.ply > 0) { loadGame(st); refreshEval(); }
       } catch {
         if (!stop) setTimeout(ping, 2000);
       }
@@ -44,45 +64,34 @@ export default function PlayPanel({ onBotChanged }) {
     return () => { stop = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const refreshEval = useCallback(async () => {
-    try {
-      const e = await api("/eval");
-      setEvalBlack(e.winprob_black ?? 0.5);
-    } catch { /* ignore */ }
-  }, []);
-
-  async function startGame(humanColor) {
-    setBusy(true);
-    setFt({ report: null, error: null, running: false });
-    try {
-      const st = await api("/new", { human_color: humanColor });
-      setGame(st);
-      refreshEval();
-    } catch (e) {
-      setFt({ report: null, error: e.message, running: false });
-    } finally {
-      setBusy(false);
-    }
-  }
-
+  // keyboard navigation through history
   useEffect(() => {
-    movesEndRef.current?.scrollIntoView({ block: "nearest" });
-  }, [game?.ply]);
+    const onKey = (e) => {
+      if (!game || e.target.tagName === "INPUT") return;
+      const n = game.ply;
+      if (e.key === "ArrowLeft") setViewPly((v) => Math.max(0, (v ?? n) - 1));
+      else if (e.key === "ArrowRight")
+        setViewPly((v) => { const nx = (v ?? n) + 1; return nx >= n ? null : nx; });
+      else if (e.key === "Home") setViewPly(0);
+      else if (e.key === "End") setViewPly(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [game]);
 
   // auto-pass when the human is on move but has no legal placing move
   useEffect(() => {
-    if (game && !game.game_over && game.must_pass && game.your_turn && !busyRef.current) {
+    if (game && viewPly === null && !game.game_over && game.must_pass && game.your_turn && !busyRef.current) {
       move(64);
     }
-  }, [game?.ply, game?.must_pass, game?.your_turn, game?.game_over]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [game?.ply, game?.must_pass, game?.your_turn, game?.game_over, viewPly]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function move(action) {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
     try {
-      const st = await api("/move", { action });
-      setGame(st);
+      loadGame(await api("/move", { action }));
       await refreshEval();
     } catch (e) {
       setGame((g) => ({ ...g, _err: e.message }));
@@ -107,8 +116,7 @@ export default function PlayPanel({ onBotChanged }) {
   if (!game) {
     return (
       <main>
-        <BoardArea grid={INITIAL_GRID} evalBlack={0.5}
-          status="Choose your colour to start." />
+        <BoardArea grid={INITIAL_GRID} evalBlack={0.5} status="Choose your colour to start." />
         <section className="panel">
           <h2 className="start-title">New game</h2>
           <p className="hint">Black moves first.</p>
@@ -128,24 +136,31 @@ export default function PlayPanel({ onBotChanged }) {
   }
 
   /* ---------- in-game ---------- */
-  const lastMoves = (game.last_bot_moves || []).map(sanToIdx).filter((x) => x >= 0);
+  const moves = game.moves || [];
+  const positions = game.positions || [];
+  const live = viewPly === null;
+  const shownGrid = live ? game.grid : (positions[viewPly] || game.grid);
+
+  // highlight the move that produced the shown position
+  const lastMoves = live
+    ? (game.last_bot_moves || []).map(sanToIdx).filter((x) => x >= 0)
+    : (viewPly > 0 ? [sanToIdx(moves[viewPly - 1]?.san)].filter((x) => x >= 0) : []);
+
   let status;
-  if (game._err) status = <span className="error">{game._err}</span>;
+  if (!live) status = `Viewing move ${viewPly} of ${game.ply}.`;
+  else if (game._err) status = <span className="error">{game._err}</span>;
   else if (game.game_over)
     status = game.winner === "draw"
-      ? "Draw."
-      : `${cap(game.winner)} wins ${game.score.black}–${game.score.white}.`;
+      ? "Draw." : `${cap(game.winner)} wins ${game.score.black}–${game.score.white}.`;
   else status = game.your_turn ? "Your move." : "Bot thinking…";
-
-  const moves = game.moves || [];
 
   return (
     <main>
       <BoardArea
-        grid={game.grid}
-        legal={game.your_turn ? game.legal_actions : []}
+        grid={shownGrid}
+        legal={live && game.your_turn ? game.legal_actions : []}
         last={lastMoves}
-        onMove={move}
+        onMove={live ? move : undefined}
         evalBlack={evalBlack}
         status={
           <>
@@ -153,48 +168,56 @@ export default function PlayPanel({ onBotChanged }) {
             &nbsp;·&nbsp; you are {cap(game.human_color)}
           </>
         }
+        footer={!live && (
+          <div className="board-legend">
+            <button className="pv" onClick={() => setViewPly(null)}>▶ back to live position</button>
+          </div>
+        )}
       />
 
       <section className="panel">
-        <div className="controls">
-          <button className="primary" onClick={() => setGame(null)} disabled={busy}>
+        <div className="controls nav">
+          <button className="primary" onClick={() => { setGame(null); setViewPly(null); }} disabled={busy}>
             New game
           </button>
-          <span className="alt">move {game.ply}</span>
+          <span className="spacer" />
+          <button onClick={() => setViewPly(0)} disabled={game.ply === 0} title="start">⏮</button>
+          <button onClick={() => setViewPly((v) => Math.max(0, (v ?? game.ply) - 1))}
+            disabled={game.ply === 0 || viewPly === 0} title="prev (←)">◀</button>
+          <button onClick={() => setViewPly((v) => { const n = (v ?? game.ply) + 1; return n >= game.ply ? null : n; })}
+            disabled={live} title="next (→)">▶</button>
+          <button onClick={() => setViewPly(null)} disabled={live} title="live">⏭</button>
         </div>
 
-        <h3 className="mh-title">Move history</h3>
-        <ol className="game-moves">
-          {moves.length === 0 && <li className="alt">no moves yet</li>}
-          {moves.map((m, i) => (
-            <li key={i} className={i === moves.length - 1 ? "cur" : ""}>
-              <span className="n">{m.n}.</span>
-              <span className="disc">{m.side === "black" ? "⚫" : "⚪"}</span>
-              <span className="san">{m.pass ? "pass" : m.san}</span>
-              <span className="by">{m.by}</span>
-            </li>
-          ))}
-          <li ref={movesEndRef} aria-hidden style={{ display: "block", padding: 0, height: 1 }} />
-        </ol>
+        <h3 className="mh-title">Move history <span className="alt">— click a move to view the board</span></h3>
+        <MoveList
+          items={moves.map((m) => ({
+            n: m.n, side: m.side, san: m.pass ? "pass" : m.san, right: m.by,
+          }))}
+          selected={viewPly ?? game.ply}
+          onSelect={(i) => setViewPly(i >= game.ply ? null : i)}
+        />
 
         {game.game_over && (
           <div className="gameover">
             <p>
-              {game.winner === "draw"
-                ? "Draw."
-                : game.winner === game.human_color
-                ? "You won! "
-                : "The bot won. "}
+              {game.winner === "draw" ? "Draw."
+                : game.winner === game.human_color ? "You won! " : "The bot won. "}
               Final {game.score.black}–{game.score.white}.
             </p>
-            <button className="primary" onClick={finetune} disabled={ft.running}>
-              {ft.running ? "Fine-tuning… (≈5–20s)" : "Fine-tune bot from this game"}
-            </button>
+            <div className="go-actions">
+              <button className="primary" onClick={() => onAnalyzeGame?.(game.history_actions)}>
+                Analyse this game
+              </button>
+              <button onClick={finetune} disabled={ft.running}>
+                {ft.running ? "Fine-tuning… (≈5–20s)" : "Fine-tune bot from this game"}
+              </button>
+            </div>
             <p className="hint">
-              Takes the bot's moves from the game just played, rewards its best moves
-              and penalises blunders (graded by a fast positional check), runs a short
-              training pass, and keeps the update only if the bot doesn't get weaker
-              vs a random opponent.
+              <b>Analyse</b> opens the analysis board on this game.
+              &nbsp;<b>Fine-tune</b> rewards the bot's good moves and penalises its blunders
+              (graded by a fast positional check), runs a short training pass, and keeps the
+              update only if the bot doesn't get weaker vs a random opponent.
             </p>
             <FineTuneResult report={ft.report} error={ft.error} />
           </div>

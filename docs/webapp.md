@@ -31,9 +31,11 @@ Notes:
 - Start by choosing your colour — **Black / White / Random** (Black moves first).
   `?play=black` (or `white` / `random`) skips the chooser.
 - Legal squares are dotted; your / the bot's last move is outlined.
-- A numbered **move history** (side + `you`/`bot`, passes shown) scrolls alongside
-  the board; the current game survives a page refresh.
-- When the game ends: **Fine-tune bot from this game** (see below).
+- **Move history** (same list + `⏮ ◀ ▶ ⏭` / arrow-key navigation as the Analysis
+  tab): click any move to view the board at that point; "▶ back to live position"
+  returns. The current game survives a page refresh.
+- When the game ends: **Analyse this game** (opens the Analysis board on it) and
+  **Fine-tune bot from this game** (see below).
 
 ## Analysis tab (Lichess-analysis style)
 

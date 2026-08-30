@@ -107,6 +107,13 @@ def test_play_and_analyse_flow(server):
     bot_moves = [m for m in log if m["by"] == "bot"]
     assert bot_moves and all(m["side"] == "white" for m in bot_moves)
 
+    # per-ply board grids for history navigation in the Play tab
+    pos = st["positions"]
+    assert len(pos) == st["ply"] + 1
+    assert pos[0][3][3] == -1 and pos[0][3][4] == 1  # initial position
+    assert pos[-1] == st["grid"]                     # last == current
+    assert all(len(g) == 8 and len(g[0]) == 8 for g in pos)
+
     an = _call(server, "/api/analyse", {"history_actions": st["history_actions"]})
     assert len(an["eval_graph"]) == an["n_moves"] + 1
     assert len(an["positions"]) == an["n_moves"] + 1

@@ -76,30 +76,34 @@ class GameSession:
             self._apply(a)
             self.last_bot_moves.append(a)
 
-    def _move_log(self) -> List[dict]:
-        """Per-move record: number, SAN, side, and who played it (you / bot)."""
+    def _grid(self, b: Board) -> List[List[int]]:
+        return [[int(b.array[r, c]) for c in range(8)] for r in range(8)]
+
+    def _replay(self):
+        """Per-move log + the board grid after every ply (index 0 = start)."""
         log: List[dict] = []
         b = Board.initial()
+        grids = [self._grid(b)]
         for i, a in enumerate(self.history):
-            side = _side(b.player)
             log.append({
                 "n": i + 1,
                 "san": _san(a),
-                "side": side,
+                "side": _side(b.player),
                 "by": "you" if b.player == self.human_color else "bot",
                 "pass": a == PASS_ACTION,
             })
             b = b.apply(None if a == PASS_ACTION else action_to_rc(a))
-        return log
+            grids.append(self._grid(b))
+        return log, grids
 
     # -- serialisation --------------------------------------------
     def state(self) -> dict:
         b = self.board
-        grid = [[int(b.array[r, c]) for c in range(8)] for r in range(8)]
         terminal = b.is_terminal()
         black, white = b.scores()
+        moves, grids = self._replay()
         return {
-            "grid": grid,
+            "grid": self._grid(b),
             "turn": _side(b.player),
             "human_color": _side(self.human_color),
             "your_turn": (not terminal) and b.player == self.human_color,
@@ -110,7 +114,8 @@ class GameSession:
             "score": {"black": black, "white": white},
             "history": [_san(a) for a in self.history],
             "history_actions": list(self.history),
-            "moves": self._move_log(),
+            "moves": moves,
+            "positions": grids,              # board after each ply; index 0 = start
             "last_bot_moves": [_san(a) for a in self.last_bot_moves],
             "ply": len(self.history),
             "level": self.level,

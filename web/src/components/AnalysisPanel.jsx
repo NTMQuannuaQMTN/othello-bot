@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import BoardArea from "./BoardArea.jsx";
 import EvalGraph from "./EvalGraph.jsx";
+import MoveList from "./MoveList.jsx";
 import { api, sanToIdx } from "../api.js";
 
 const SUMMARY_ORDER = ["Blunder", "Mistake", "Inaccuracy", "Good", "Excellent", "Best"];
 const EMPTY = { positions: [startPosition()], plies: [], eval_graph: [{ ply: -1, eval_black: 0.5 }], summary: { black: {}, white: {} } };
 
-export default function AnalysisPanel() {
+export default function AnalysisPanel({ loadLine }) {
   const [line, setLine] = useState([]);
   const [cursor, setCursor] = useState(0);
   const [data, setData] = useState(EMPTY);
@@ -40,6 +41,11 @@ export default function AnalysisPanel() {
       .then((d) => setLine(d.actions || []))
       .catch((e) => setError(e.message));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "Analyse this game" from the Play tab
+  useEffect(() => {
+    if (loadLine && Array.isArray(loadLine.actions)) setLine(loadLine.actions);
+  }, [loadLine]);
 
   // keyboard navigation
   useEffect(() => {
@@ -175,30 +181,23 @@ export default function AnalysisPanel() {
           })}
         </div>
 
-        <ol className="analysis-list">
-          {data.plies.map((p) => {
-            let alt = "";
+        <MoveList
+          items={data.plies.map((p) => {
+            let note = "";
             if (p.label !== "Best" && p.label !== "Excellent") {
               const s = p.best_san !== p.played_san ? p.best_san
                 : p.coach_best_san !== p.played_san ? p.coach_best_san : null;
-              if (s) alt = `try ${s} · −${Math.round(p.drop * 100)}`;
+              if (s) note = `try ${s} · −${Math.round(p.drop * 100)}`;
             }
-            return (
-              <li key={p.ply} className={cursor === p.ply + 1 ? "sel" : ""}
-                onClick={() => setCursor(p.ply + 1)}>
-                <span className="alt">{p.ply + 1}.</span>
-                <span className="mv">{p.side === "black" ? "⚫" : "⚪"}{p.played_san}</span>
-                <span className="alt">{alt}</span>
-                <span className={"label " + p.label}>{p.glyph || p.label}</span>
-              </li>
-            );
+            return {
+              n: p.ply + 1, side: p.side, san: p.played_san, note,
+              right: p.glyph || p.label, rightClass: "label " + p.label,
+            };
           })}
-          {!data.plies.length && (
-            <li className="alt" style={{ display: "block", cursor: "default" }}>
-              Play moves on the board to build a line — the bot analyses each one.
-            </li>
-          )}
-        </ol>
+          selected={cursor}
+          onSelect={setCursor}
+          emptyText="Play moves on the board to build a line — the bot analyses each one."
+        />
       </section>
     </main>
   );
