@@ -74,6 +74,13 @@ def test_move_bot_reply_false_defers_the_bot(server):
     assert len(st2["last_bot_moves"]) == 1
 
 
+def test_bot_move_tolerates_a_get(server):
+    _call(server, "/api/new", {"human_color": "white"})   # bot (black) already moved once
+    with urllib.request.urlopen(server + "/api/bot_move") as r:  # GET, no body
+        assert r.status == 200
+        assert "grid" in json.loads(r.read())
+
+
 def test_games_are_recorded_and_finetune_all(tmp_path):
     from othello_rl.webapp.server import serve as _serve
     agent = DQNAgent(NetworkConfig(channels=8, blocks=2, hidden=16), seed=1)

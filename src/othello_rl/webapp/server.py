@@ -126,6 +126,7 @@ def make_handler(app: AppState):
         return st
 
     @route("POST /api/bot_move")
+    @route("GET /api/bot_move")  # tolerate a GET (no body) from the client
     def _bot_move(_):
         st = app.session.bot_move()
         app.record_if_finished()

@@ -57,7 +57,7 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame }) {
         let st = await api("/state");   // resume/keep the current game across refreshes
         if (stop || st.ply === 0) return;
         // if we refreshed while the bot still owed a reply, collect it
-        if (!st.game_over && !st.your_turn) st = await api("/bot_move");
+        if (!st.game_over && !st.your_turn) st = await api("/bot_move", {});
         if (!stop) { loadGame(st); refreshEval(); }
       } catch {
         if (!stop) setTimeout(ping, 2000);
@@ -103,7 +103,7 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame }) {
       // 2. after a short pause, let the bot reply (may be several plies if we pass)
       if (!st.game_over && !st.your_turn) {
         await new Promise((r) => setTimeout(r, BOT_DELAY_MS));
-        st = await api("/bot_move");
+        st = await api("/bot_move", {});
         loadGame(st);
         await refreshEval();
       }
