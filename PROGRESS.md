@@ -116,8 +116,6 @@ referee check over 150 episodes — all clean.
 - [ ] `evaluation/report.py` `write_plot` / `write_markdown` exercised only via
       `test_report.py::test_generate_report_writes_files`; no assertion on the
       markdown table contents.
-- [ ] `utils/experiment.py::git_commit` not tested outside a git checkout
-      (returns `None` — low value).
 - [ ] `webapp/bot_service.finetune_from_game` not asserted to be *reproducible*
       (it is, by construction: seeded buffer + seeded sampling).
 - [ ] No test drives `scripts/track.py` on real multi-stage checkpoints (only a
@@ -139,9 +137,11 @@ referee check over 150 episodes — all clean.
   accordingly; not a correctness risk.
 - DQN eval win rates are noisy at 60–100 games/eval — always read multi-eval
   trends and the internal-Elo curve, never a single point.
-- The trained agent beats Random/Greedy decisively but is only ~0.2–0.36 vs the
-  hand-written Heuristic and is **untested vs Minimax**. Closing that gap needs
-  the AlphaZero-style upgrade (`docs/alphazero-plan.md`), not more DQN tuning.
+- The trained agent beats Random/Greedy decisively (~0.92) but is ~0.31–0.35 vs
+  the Heuristic / Minimax-1 and **0.08 / 0.03 vs Minimax-2 / -3** (now measured —
+  `experiments/20260830-183834_eval_othello_bot_v1/`, internal Elo ~2002, between
+  greedy and heuristic). Closing the gap to search-based play needs the
+  AlphaZero-style upgrade (`docs/alphazero-plan.md`), not more DQN tuning.
 - Internal Elo is a crude iterative fit (not Bradley-Terry MLE) — fine for
   within-project ordering, must never be quoted as an external rating.
 

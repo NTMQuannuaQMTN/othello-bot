@@ -32,6 +32,10 @@ experiments/**
 !experiments/**/resolved_config.yaml
 !experiments/**/run_config.yaml
 !experiments/**/metadata.json
+!experiments/**/bot_eval.json
+!experiments/**/bot_eval.md
+!experiments/**/tracking.json
+!experiments/**/tracking.md
 !experiments/**/*.png
 experiments/**/*.log
 experiments/_*.log

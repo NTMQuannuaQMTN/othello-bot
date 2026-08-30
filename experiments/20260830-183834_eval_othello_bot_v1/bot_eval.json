@@ -1,0 +1,82 @@
+{
+  "generated_utc": "2026-08-30T10:38:34+00:00",
+  "agent": "othello_bot_v1",
+  "num_games": 120,
+  "elo_extra_games": 40,
+  "seed": 20260829,
+  "panel": [
+    "random",
+    "greedy",
+    "heuristic",
+    "minimax:1",
+    "minimax:2",
+    "minimax:3"
+  ],
+  "vs": {
+    "random": {
+      "win_rate": 0.9291666666666667,
+      "ci_low": 0.8687490053807161,
+      "ci_high": 0.9629585952962778,
+      "wins": 111,
+      "losses": 8,
+      "draws": 1,
+      "mean_disc_diff": 19.916666666666668
+    },
+    "greedy": {
+      "win_rate": 0.9041666666666667,
+      "ci_low": 0.8382901064302974,
+      "ci_high": 0.9449685077994929,
+      "wins": 107,
+      "losses": 10,
+      "draws": 3,
+      "mean_disc_diff": 20.058333333333334
+    },
+    "heuristic": {
+      "win_rate": 0.3458333333333333,
+      "ci_low": 0.26670693609087304,
+      "ci_high": 0.43452431415137194,
+      "wins": 39,
+      "losses": 76,
+      "draws": 5,
+      "mean_disc_diff": -11.3
+    },
+    "minimax:1": {
+      "win_rate": 0.30833333333333335,
+      "ci_low": 0.23272612182675728,
+      "ci_high": 0.3958316487446824,
+      "wins": 35,
+      "losses": 81,
+      "draws": 4,
+      "mean_disc_diff": -12.733333333333333
+    },
+    "minimax:2": {
+      "win_rate": 0.07916666666666666,
+      "ci_low": 0.04290802393886402,
+      "ci_high": 0.14153403753320998,
+      "wins": 9,
+      "losses": 110,
+      "draws": 1,
+      "mean_disc_diff": -31.508333333333333
+    },
+    "minimax:3": {
+      "win_rate": 0.03333333333333333,
+      "ci_low": 0.013037340166920576,
+      "ci_high": 0.0825815794852803,
+      "wins": 3,
+      "losses": 115,
+      "draws": 2,
+      "mean_disc_diff": -38.28333333333333
+    }
+  },
+  "elo_kind": "internal",
+  "internal_elo": {
+    "minimax:3": 2599.4325750270627,
+    "minimax:2": 2449.7779644723614,
+    "heuristic": 2138.2295585668135,
+    "minimax:1": 2110.6978547825624,
+    "othello_bot_v1": 2001.7143074648684,
+    "greedy": 1650.2093345327999,
+    "random": 1500.0
+  },
+  "agent_internal_elo": 2001.7143074648684
+}

@@ -129,3 +129,39 @@ Plot: `selfplay_winrate.png`.
 - **No catastrophic forgetting**: win rate vs Random stays 0.89–0.93 for the whole
   run, because 20 % of self-play games are still against the fixed baselines and
   30 % against historical snapshots.
+
+---
+
+## 4. Standard evaluation of the bundled bot (Phase 8 protocol)
+
+`experiments/20260830-183834_eval_othello_bot_v1/` — `models/othello_bot_v1.pt`
+(the curriculum + self-play checkpoint), 120 games/opponent, random openings,
+seed 20260829.
+
+```
+python3 scripts/eval_bot.py --checkpoint models/othello_bot_v1.pt --games 120
+```
+
+| opponent | W–L–D | win rate | 95% CI | mean disc diff |
+|---|---|--:|:--:|--:|
+| random | 111–8–1 | **0.929** | [0.87, 0.96] | +19.9 |
+| greedy | 107–10–3 | **0.904** | [0.84, 0.94] | +20.1 |
+| heuristic | 39–76–5 | 0.346 | [0.27, 0.43] | −11.3 |
+| minimax:1 | 35–81–4 | 0.308 | [0.23, 0.40] | −12.7 |
+| minimax:2 | 9–110–1 | 0.079 | [0.04, 0.14] | −31.5 |
+| minimax:3 | 3–115–2 | 0.033 | [0.01, 0.08] | −38.3 |
+
+Internal Elo (this panel, `random` = 1500): `minimax:3` 2599 · `minimax:2` 2450 ·
+`heuristic` 2138 · `minimax:1` 2111 · **`othello_bot_v1` 2002** · `greedy` 1650 ·
+`random` 1500.
+
+### Reading the result
+
+- The bot **decisively beats Random and Greedy** (~0.9, CIs well clear of 0.5)
+  and sits ~1 ply of search below the hand-written Heuristic / Minimax-1
+  (~0.31–0.35). It is **clearly outclassed by 2–3-ply alpha-beta search**
+  (0.08 / 0.03) — this is the first measurement of the bot vs Minimax, and it
+  confirms the expected ceiling for a ~410k-param CPU DQN with a purely sparse
+  reward.
+- Closing the gap to search-based play is exactly what the AlphaZero-style
+  upgrade (`docs/alphazero-plan.md`) is for; more DQN tuning will not get there.

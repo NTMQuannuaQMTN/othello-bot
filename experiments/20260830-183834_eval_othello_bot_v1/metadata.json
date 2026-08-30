@@ -1,0 +1,23 @@
+{
+  "created": "2026-08-30T18:38:34",
+  "git_commit": "759a397e3423d35696a9bf100ce651b9992ad27b",
+  "versions": {
+    "python": "3.9.6",
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "torch": "2.8.0",
+    "numpy": "2.0.2"
+  },
+  "argv": [
+    "scripts/eval_bot.py",
+    "--checkpoint",
+    "models/othello_bot_v1.pt",
+    "--games",
+    "120"
+  ],
+  "config": {
+    "agent": "othello_bot_v1",
+    "checkpoint": "models/othello_bot_v1.pt",
+    "games": 120,
+    "seed": 20260829
+  }
+}

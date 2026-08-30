@@ -1,0 +1,314 @@
+{
+  "elo_kind": "internal",
+  "checkpoints": [
+    {
+      "name": "untrained",
+      "env_steps": 0,
+      "vs": {
+        "random": {
+          "win_rate": 0.55,
+          "ci_low": 0.42491714548981496,
+          "ci_high": 0.6690654614623918,
+          "mean_disc_diff": 1.35
+        },
+        "greedy": {
+          "win_rate": 0.45,
+          "ci_low": 0.33093453853760824,
+          "ci_high": 0.575082854510185,
+          "mean_disc_diff": -5.416666666666667
+        },
+        "heuristic": {
+          "win_rate": 0.03333333333333333,
+          "ci_low": 0.009189126490150246,
+          "ci_high": 0.11363987528925378,
+          "mean_disc_diff": -34.95
+        }
+      },
+      "internal_elo": 1584.9387889032535
+    },
+    {
+      "name": "stage1_random_step30000",
+      "env_steps": 30000,
+      "vs": {
+        "random": {
+          "win_rate": 0.6416666666666667,
+          "ci_low": 0.5152077450091143,
+          "ci_high": 0.7510763080221382,
+          "mean_disc_diff": 8.266666666666667
+        },
+        "greedy": {
+          "win_rate": 0.525,
+          "ci_low": 0.4009879500347394,
+          "ci_high": 0.646003353441364,
+          "mean_disc_diff": 0.7666666666666667
+        },
+        "heuristic": {
+          "win_rate": 0.06666666666666667,
+          "ci_low": 0.02622827414319792,
+          "ci_high": 0.15925579893767722,
+          "mean_disc_diff": -29.2
+        }
+      },
+      "internal_elo": 1695.381726957428
+    },
+    {
+      "name": "stage1_random_step60000",
+      "env_steps": 60000,
+      "vs": {
+        "random": {
+          "win_rate": 0.7333333333333333,
+          "ci_low": 0.6099104639810865,
+          "ci_high": 0.8286750351292115,
+          "mean_disc_diff": 7.7
+        },
+        "greedy": {
+          "win_rate": 0.55,
+          "ci_low": 0.42491714548981496,
+          "ci_high": 0.6690654614623918,
+          "mean_disc_diff": 5.916666666666667
+        },
+        "heuristic": {
+          "win_rate": 0.1,
+          "ci_low": 0.04664219945723587,
+          "ci_high": 0.20149694492511044,
+          "mean_disc_diff": -27.0
+        }
+      },
+      "internal_elo": 1622.181563662893
+    },
+    {
+      "name": "stage1_random_step90000",
+      "env_steps": 90000,
+      "vs": {
+        "random": {
+          "win_rate": 0.8,
+          "ci_low": 0.6821795390818299,
+          "ci_high": 0.8817161026314104,
+          "mean_disc_diff": 15.616666666666667
+        },
+        "greedy": {
+          "win_rate": 0.6916666666666667,
+          "ci_low": 0.5662652296373675,
+          "ci_high": 0.7940014303460915,
+          "mean_disc_diff": 7.083333333333333
+        },
+        "heuristic": {
+          "win_rate": 0.08333333333333333,
+          "ci_low": 0.03611992405048589,
+          "ci_high": 0.18069168468112481,
+          "mean_disc_diff": -33.81666666666667
+        }
+      },
+      "internal_elo": 1839.9758944101306
+    },
+    {
+      "name": "stage1_random_step120000",
+      "env_steps": 120000,
+      "vs": {
+        "random": {
+          "win_rate": 0.725,
+          "ci_low": 0.6010956285966033,
+          "ci_high": 0.8218261026883268,
+          "mean_disc_diff": 8.65
+        },
+        "greedy": {
+          "win_rate": 0.7,
+          "ci_low": 0.5749105303360957,
+          "ci_high": 0.801019897472731,
+          "mean_disc_diff": 8.983333333333333
+        },
+        "heuristic": {
+          "win_rate": 0.06666666666666667,
+          "ci_low": 0.02622827414319792,
+          "ci_high": 0.15925579893767722,
+          "mean_disc_diff": -28.433333333333334
+        }
+      },
+      "internal_elo": 1838.5259228863874
+    },
+    {
+      "name": "stage2_random_greedy_step165000",
+      "env_steps": 165000,
+      "vs": {
+        "random": {
+          "win_rate": 0.6916666666666667,
+          "ci_low": 0.5662652296373675,
+          "ci_high": 0.7940014303460915,
+          "mean_disc_diff": 10.85
+        },
+        "greedy": {
+          "win_rate": 0.6833333333333333,
+          "ci_low": 0.5576599505698345,
+          "ci_high": 0.7869429415882567,
+          "mean_disc_diff": 6.516666666666667
+        },
+        "heuristic": {
+          "win_rate": 0.2,
+          "ci_low": 0.11828389736858964,
+          "ci_high": 0.3178204609181701,
+          "mean_disc_diff": -24.2
+        }
+      },
+      "internal_elo": 1764.6660434921735
+    },
+    {
+      "name": "stage2_random_greedy_step225000",
+      "env_steps": 225000,
+      "vs": {
+        "random": {
+          "win_rate": 0.925,
+          "ci_low": 0.8299380098208516,
+          "ci_high": 0.9689141492729055,
+          "mean_disc_diff": 20.1
+        },
+        "greedy": {
+          "win_rate": 0.7916666666666666,
+          "ci_low": 0.6729598797971337,
+          "ci_high": 0.8752719940907387,
+          "mean_disc_diff": 16.633333333333333
+        },
+        "heuristic": {
+          "win_rate": 0.325,
+          "ci_low": 0.22015476396967057,
+          "ci_high": 0.45090611169760597,
+          "mean_disc_diff": -11.216666666666667
+        }
+      },
+      "internal_elo": 1920.3713430056532
+    },
+    {
+      "name": "stage3_heuristic_step285000",
+      "env_steps": 285000,
+      "vs": {
+        "random": {
+          "win_rate": 0.9166666666666666,
+          "ci_low": 0.8193083153188752,
+          "ci_high": 0.9638800759495141,
+          "mean_disc_diff": 24.05
+        },
+        "greedy": {
+          "win_rate": 0.8333333333333334,
+          "ci_low": 0.7196814850279217,
+          "ci_high": 0.9068692279867897,
+          "mean_disc_diff": 19.183333333333334
+        },
+        "heuristic": {
+          "win_rate": 0.30833333333333335,
+          "ci_low": 0.20599856965390848,
+          "ci_high": 0.4337347703626324,
+          "mean_disc_diff": -14.35
+        }
+      },
+      "internal_elo": 1905.1783031205664
+    },
+    {
+      "name": "stage3_heuristic_step345000",
+      "env_steps": 345000,
+      "vs": {
+        "random": {
+          "win_rate": 0.8583333333333333,
+          "ci_low": 0.7485558357436933,
+          "ci_high": 0.9249861807471212,
+          "mean_disc_diff": 22.183333333333334
+        },
+        "greedy": {
+          "win_rate": 0.8916666666666667,
+          "ci_low": 0.7882982246907169,
+          "ci_high": 0.9478988631015692,
+          "mean_disc_diff": 21.25
+        },
+        "heuristic": {
+          "win_rate": 0.175,
+          "ci_low": 0.09931961766489765,
+          "ci_high": 0.28979343714575867,
+          "mean_disc_diff": -22.416666666666668
+        }
+      },
+      "internal_elo": 1874.2400314000506
+    },
+    {
+      "name": "stage3_heuristic_step375000",
+      "env_steps": 375000,
+      "vs": {
+        "random": {
+          "win_rate": 0.85,
+          "ci_low": 0.7388517410884038,
+          "ci_high": 0.9190265075770431,
+          "mean_disc_diff": 19.283333333333335
+        },
+        "greedy": {
+          "win_rate": 0.8,
+          "ci_low": 0.6821795390818299,
+          "ci_high": 0.8817161026314104,
+          "mean_disc_diff": 20.266666666666666
+        },
+        "heuristic": {
+          "win_rate": 0.21666666666666667,
+          "ci_low": 0.13122921046407016,
+          "ci_high": 0.3362026834734252,
+          "mean_disc_diff": -17.683333333333334
+        }
+      },
+      "internal_elo": 1909.7422969948093
+    }
+  ],
+  "elo_leaderboard": [
+    {
+      "name": "heuristic",
+      "rating": 2084.989196197871
+    },
+    {
+      "name": "stage2_random_greedy_step225000",
+      "rating": 1920.3713430056532
+    },
+    {
+      "name": "stage3_heuristic_step375000",
+      "rating": 1909.7422969948093
+    },
+    {
+      "name": "stage3_heuristic_step285000",
+      "rating": 1905.1783031205664
+    },
+    {
+      "name": "stage3_heuristic_step345000",
+      "rating": 1874.2400314000506
+    },
+    {
+      "name": "stage1_random_step90000",
+      "rating": 1839.9758944101306
+    },
+    {
+      "name": "stage1_random_step120000",
+      "rating": 1838.5259228863874
+    },
+    {
+      "name": "stage2_random_greedy_step165000",
+      "rating": 1764.6660434921735
+    },
+    {
+      "name": "stage1_random_step30000",
+      "rating": 1695.381726957428
+    },
+    {
+      "name": "stage1_random_step60000",
+      "rating": 1622.181563662893
+    },
+    {
+      "name": "greedy",
+      "rating": 1601.8428467061233
+    },
+    {
+      "name": "untrained",
+      "rating": 1584.9387889032535
+    },
+    {
+      "name": "random",
+      "rating": 1500.0
+    }
+  ],
+  "baselines": [
+    "random",
+    "greedy",
+    "heuristic"
+  ]
+}
