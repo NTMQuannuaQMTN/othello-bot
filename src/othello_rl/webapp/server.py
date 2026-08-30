@@ -52,22 +52,36 @@ _FALLBACK_PAGE = b"""<!doctype html><meta charset=utf-8>
 
 
 class AppState:
-    def __init__(self, bot: OthelloBot, static_dir: Path = None):
+    def __init__(self, bot: OthelloBot, static_dir: Path = None, games_path=None):
         self.bot = bot
         self.session = GameSession(bot)
         self.lock = threading.Lock()
         self.static_dir = Path(static_dir) if static_dir else DEFAULT_STATIC_DIR
-        self.games_path = (Path(bot.state_dir) / "games.jsonl") if bot.state_dir else None
-        self._recorded = False  # has the current game already been appended?
+        # the durable game dataset (append-only, deduplicated by move sequence)
+        if games_path is not None:
+            self.games_path = Path(games_path)
+        elif bot.state_dir:
+            self.games_path = Path(bot.state_dir) / "games.jsonl"
+        else:
+            self.games_path = None
+        self._recorded = False  # has the *current* game already been appended?
+        self._seen = set()      # move-sequence signatures already on disk
+        if self.games_path and self.games_path.is_file():
+            for g in self.load_games():
+                self._seen.add(tuple(g.get("moves", [])))
 
     def record_if_finished(self) -> None:
-        """Append a finished human-vs-bot game to games.jsonl (once)."""
+        """Append the finished game to the dataset once (skipping duplicates)."""
         if not self.games_path or self._recorded:
             return
         st = self.session
         if not st.board.is_terminal() or len(st.history) == 0:
             return
         self._recorded = True
+        sig = tuple(st.history)
+        if sig in self._seen:
+            return
+        self._seen.add(sig)
         b, w = st.board.scores()
         rec = {
             "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -78,6 +92,7 @@ class AppState:
             "score": {"black": b, "white": w},
             "bot_version": self.bot.version,
         }
+        self.games_path.parent.mkdir(parents=True, exist_ok=True)
         with self.games_path.open("a") as fh:
             fh.write(json.dumps(rec) + "\n")
 
