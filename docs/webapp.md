@@ -65,10 +65,13 @@ Below the graph, a **strategy read-out** per side: move-quality counts +
 `accuracy` (fraction of Good-or-better moves), corners / X-squares / edge moves
 played, average mobility, disc count.
 
-**Teach the bot this game** — *Learn ⚫ Black's play* / *Learn ⚪ White's play*
-runs the same fine-tune as the Play tab but on the chosen side's moves. Point it
-at a strong player's game and the bot's Best/Excellent moves for that side get
-reinforced (`POST /api/finetune {moves, learn_color}`).
+**Teach the bot this game** — *Learn the whole game* (both sides) / *⚫ Black
+only* / *⚪ White only*. `learn_color` = `"both"` / `"black"` / `"white"`; each
+side is graded and reinforced from its own perspective, outcome-weighted. Point
+it at a strong player's game to reinforce that side's Best/Excellent moves
+(`POST /api/finetune {moves, learn_color}`). The Play tab's game-over screen has
+the same *Learn the whole game* / *Learn the bot's moves* choice, plus *Learn
+from all N saved games* (`scripts/finetune_from_games.py --learn both` offline).
 
 ### How a move is graded
 

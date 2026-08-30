@@ -435,9 +435,20 @@ class OthelloBot:
         return transitions
 
     def _build_game_transitions(self, actions: Sequence[int], learn_color: str):
-        """Grade ``learn_color``'s moves in one game and build DQN transitions
-        for them (with blunder / best-move shaping). Returns
-        ``(transitions, grades, n_reinforced, n_penalised)``."""
+        """Build DQN transitions from a game for the requested side(s).
+
+        ``learn_color`` is ``"black"``, ``"white"`` or ``"both"`` (every move in
+        the list, each side from its own perspective). Returns
+        ``(transitions, grades, n_reinforced, n_penalised)``.
+        """
+        if str(learn_color).lower().startswith(("both", "all")):
+            tt, gg, nr, npn = [], [], 0, 0
+            for side in ("black", "white"):
+                t, g, a, b = self._build_game_transitions(actions, side)
+                tt += t; gg += g; nr += a; npn += b
+            gg.sort(key=lambda x: x["ply"])
+            return tt, gg, nr, npn
+
         cfg = self.ft
         learn_side = BLACK if str(learn_color).lower().startswith("b") else WHITE
         states = [Board.initial()]
@@ -530,17 +541,24 @@ class OthelloBot:
             trans, grades, n_reinf, n_pen = self._build_game_transitions(actions, learn_color)
             return self._run_finetune(trans, grades, n_reinf, n_pen, progress)
 
-    def finetune_from_games(self, games: Sequence[dict], progress=None) -> FineTuneReport:
+    def finetune_from_games(self, games: Sequence[dict], progress=None,
+                            learn_color: Optional[str] = None) -> FineTuneReport:
         """Fine-tune from many recorded games at once (one training pass, one
-        guardrail check). For each game the bot learns *its own* moves
-        (``learn_color`` = the opposite of the recorded ``human_color``)."""
+        guardrail check).
+
+        ``learn_color`` overrides the side to learn for every game
+        (``"black"`` / ``"white"`` / ``"both"``); by default each game teaches
+        the bot *its own* moves (opposite of the recorded ``human_color``).
+        """
         with self._lock:
             all_trans: List[tuple] = []
             all_grades: List[dict] = []
             n_reinf = n_pen = 0
             for gi, game in enumerate(games):
                 actions = game.get("moves") or game.get("actions") or []
-                if game.get("learn_color"):
+                if learn_color:
+                    lc = learn_color
+                elif game.get("learn_color"):
                     lc = game["learn_color"]
                 else:
                     hc = str(game.get("human_color", "white")).lower()

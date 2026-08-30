@@ -208,11 +208,14 @@ export default function AnalysisPanel({ loadLine, onBotChanged }) {
         {line.length > 3 && (
           <div className="learn-from">
             <span className="alt">Teach the bot this game:</span>
+            <button className="primary" disabled={!!ft.running} onClick={() => learnFrom("both")}>
+              {ft.running === "both" ? "learning…" : "Learn the whole game"}
+            </button>
             <button disabled={!!ft.running} onClick={() => learnFrom("black")}>
-              {ft.running === "black" ? "learning…" : "Learn ⚫ Black's play"}
+              {ft.running === "black" ? "learning…" : "⚫ Black only"}
             </button>
             <button disabled={!!ft.running} onClick={() => learnFrom("white")}>
-              {ft.running === "white" ? "learning…" : "Learn ⚪ White's play"}
+              {ft.running === "white" ? "learning…" : "⚪ White only"}
             </button>
           </div>
         )}

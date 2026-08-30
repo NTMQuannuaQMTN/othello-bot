@@ -123,7 +123,9 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame }) {
   async function finetune(scope) {
     setFt({ report: null, error: null, running: true });
     try {
-      const report = await api(scope === "all" ? "/finetune_all" : "/finetune", {});
+      const report = scope === "all"
+        ? await api("/finetune_all", {})
+        : await api("/finetune", { learn_color: scope === "whole" ? "both" : undefined });
       setFt({ report, error: null, running: false });
       onBotChanged?.();
     } catch (e) {
@@ -229,20 +231,24 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame }) {
                 Analyse this game
               </button>
               <button onClick={() => finetune()} disabled={ft.running}>
-                {ft.running ? "Fine-tuning…" : "Fine-tune from this game"}
+                {ft.running ? "Fine-tuning…" : "Learn the bot's moves"}
+              </button>
+              <button onClick={() => finetune("whole")} disabled={ft.running}>
+                Learn the whole game
               </button>
               {savedGames > 1 && (
                 <button onClick={() => finetune("all")} disabled={ft.running}>
-                  Fine-tune from all {savedGames} saved games
+                  Learn from all {savedGames} saved games
                 </button>
               )}
             </div>
             <p className="hint">
               Every finished game is saved to <code>webapp_state/games.jsonl</code>
               (also usable for offline training — see <code>scripts/finetune_from_games.py</code>).
-              <b> Fine-tune</b> rewards the bot's good moves and penalises its blunders,
-              runs a short training pass, and keeps the update only if the bot doesn't get
-              weaker vs a random opponent.
+              A fine-tune reinforces good moves, penalises blunders, runs a short training
+              pass, and keeps the update only if the bot doesn't get weaker vs a random
+              opponent. <b>Whole game</b> = both sides' moves; <b>bot's moves</b> = just
+              its own play.
             </p>
             <FineTuneResult report={ft.report} error={ft.error} />
           </div>

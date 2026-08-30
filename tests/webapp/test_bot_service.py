@@ -124,6 +124,16 @@ def test_finetune_learns_the_chosen_colour(bot):
         assert g["side"] == "white"
 
 
+def test_finetune_whole_game_uses_both_sides(bot):
+    acts, _ = _random_game(21)
+    only_white, gw, _, _ = bot._build_game_transitions(acts, "white")
+    only_black, gb, _, _ = bot._build_game_transitions(acts, "black")
+    both, gboth, _, _ = bot._build_game_transitions(acts, "both")
+    assert len(both) == len(only_white) + len(only_black)
+    assert {g["side"] for g in gboth} == {"black", "white"}
+    assert [g["ply"] for g in gboth] == sorted(g["ply"] for g in gboth)  # merged by ply
+
+
 def test_analyse_flags_a_clear_mistake(bot):
     # black can take corner a1; playing the b2 X-square instead should grade worse
     from tests.environment.conftest import make_board

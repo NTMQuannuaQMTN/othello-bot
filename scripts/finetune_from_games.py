@@ -35,6 +35,8 @@ def main(argv=None) -> int:
     ap.add_argument("--out", default=None, help="where to write the fine-tuned checkpoint")
     ap.add_argument("--grad-steps", type=int, default=None)
     ap.add_argument("--lr", type=float, default=None)
+    ap.add_argument("--learn", choices=["bot", "both", "black", "white"], default="bot",
+                    help="which moves to learn: bot's own (default), both sides, or one colour")
     ap.add_argument("--guardrail-games", type=int, default=120)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args(argv)
@@ -53,7 +55,9 @@ def main(argv=None) -> int:
         ft.lr = args.lr
     bot = OthelloBot.load(args.checkpoint, ft_config=ft, seed=args.seed)
 
-    rep = bot.finetune_from_games(games, progress=lambda i, n: print(f"  built {i}/{n} games", end="\r"))
+    rep = bot.finetune_from_games(
+        games, learn_color=None if args.learn == "bot" else args.learn,
+        progress=lambda i, n: print(f"  built {i}/{n} games", end="\r"))
     print()
     print(f"grad steps      : {rep.grad_steps}")
     print(f"reinforced/pen. : {rep.n_reinforced} / {rep.n_penalised}")
