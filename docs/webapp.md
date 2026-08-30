@@ -30,12 +30,16 @@ Notes:
 
 - Start by choosing your colour — **Black / White / Random** (Black moves first).
   `?play=black` (or `white` / `random`) skips the chooser.
-- Legal squares are dotted; your / the bot's last move is outlined.
+- Legal squares are dotted; your / the bot's last move is outlined. The bot
+  waits ~0.5 s after your move before replying (`/api/move` with
+  `bot_reply:false`, then `/api/bot_move`).
 - **Move history** (same list + `⏮ ◀ ▶ ⏭` / arrow-key navigation as the Analysis
-  tab): click any move to view the board at that point; "▶ back to live position"
-  returns. The current game survives a page refresh.
-- When the game ends: **Analyse this game** (opens the Analysis board on it) and
-  **Fine-tune bot from this game** (see below).
+  tab): click any move to view the board at that point; the list scrolls to keep
+  the current move visible; "▶ back to live position" returns. The current game
+  survives a page refresh.
+- When the game ends: **Analyse this game** (opens the Analysis board on it),
+  **Fine-tune from this game**, and **Fine-tune from all N saved games** (see
+  below).
 
 ## Analysis tab (Lichess-analysis style)
 
@@ -93,6 +97,25 @@ catches tactical errors (e.g. giving up a corner) that the small DQN is blind to
 All of this is configurable in `configs/webapp.yaml`. `POST /api/bot/reset`
 restores the original weights.
 
+### Using played games for future training
+
+Every finished game is appended to **`webapp_state/games.jsonl`**
+(`{ts, human_color, moves, winner, score, bot_version}` per line). You can:
+
+- **In the app** — "Fine-tune from all N saved games" on the game-over screen
+  (`POST /api/finetune_all`): batches every saved game into one training pass.
+- **Offline** —
+  ```
+  python3 scripts/finetune_from_games.py \
+      --games webapp_state/games.jsonl --checkpoint models/othello_bot_v1.pt \
+      --out models/othello_bot_v2.pt --grad-steps 400
+  ```
+  Same guardrail (kept only if it doesn't weaken the bot vs Random).
+
+The game log is plain JSONL — you can also feed it into your own training code
+(`OthelloBot.finetune_from_games(list_of_game_dicts)` or roll your own using the
+engine + `rl/` trainer).
+
 ## The bot as a testable component
 
 The bot is a stable, importable object:
@@ -132,9 +155,11 @@ Commands: `genmove <transcript>`, `eval <transcript>`, `name`, `quit`.
 | `GET /api/bot` | | bot info (version, params, games fine-tuned) |
 | `GET /api/state` | | current game state |
 | `POST /api/new` | `{human_color, level}` | new game state |
-| `POST /api/move` | `{action}` | state after your move + the bot's reply |
-| `POST /api/bot_move` | | state after the bot moves (bot plays first) |
+| `POST /api/move` | `{action, bot_reply?}` | state after your move (+ the bot's reply unless `bot_reply:false`) |
+| `POST /api/bot_move` | `{}` | state after the bot moves (bot plays first / deferred reply) |
 | `GET /api/eval` | | the bot's read of the current game position |
 | `POST /api/analyse` | `{moves` \| `transcript` \| `history_actions}` | `positions[]` (grid + legal moves + eval per ply boundary), `plies[]` (move grades), `eval_graph`, `summary` |
 | `POST /api/finetune` | `{}` or `{moves, human_color}` | fine-tune report + move grades |
+| `GET /api/games` | | `{count, path}` of saved games |
+| `POST /api/finetune_all` | `{}` | fine-tune from every saved game at once |
 | `POST /api/bot/reset` | | restores baseline weights |

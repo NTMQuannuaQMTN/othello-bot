@@ -63,6 +63,49 @@ def _call(base, path, body=None):
         return json.loads(r.read())
 
 
+def test_move_bot_reply_false_defers_the_bot(server):
+    st = _call(server, "/api/new", {"human_color": "black"})
+    after = _call(server, "/api/move", {"action": st["legal_actions"][0], "bot_reply": False})
+    assert after["ply"] == 1                 # only the human move applied
+    assert after["turn"] == "white" and not after["your_turn"]
+    assert after["last_bot_moves"] == []
+    st2 = _call(server, "/api/bot_move", {})  # the client then triggers the reply
+    assert st2["ply"] == 2 and st2["your_turn"]
+    assert len(st2["last_bot_moves"]) == 1
+
+
+def test_games_are_recorded_and_finetune_all(tmp_path):
+    from othello_rl.webapp.server import serve as _serve
+    agent = DQNAgent(NetworkConfig(channels=8, blocks=2, hidden=16), seed=1)
+    bot = OthelloBot(agent, state_dir=str(tmp_path), ft_config=FineTuneConfig(
+        grad_steps=4, batch_size=16, anchor_transitions=80, guardrail_games=4,
+        buffer_capacity=1000))
+    httpd = _serve(bot, port=8913)
+    th = threading.Thread(target=httpd.serve_forever, daemon=True)
+    th.start()
+    base = "http://127.0.0.1:8913"
+    try:
+        import random
+        assert _call(base, "/api/games")["count"] == 0
+        for g in range(2):
+            st = _call(base, "/api/new", {"human_color": "black" if g == 0 else "white"})
+            rng = random.Random(g)
+            while not st["game_over"]:
+                st = (_call(base, "/api/move", {"action": rng.choice(st["legal_actions"])})
+                      if st["your_turn"] else _call(base, "/api/bot_move", {}))
+        games = _call(base, "/api/games")
+        assert games["count"] == 2
+        recs = [json.loads(l) for l in (tmp_path / "games.jsonl").read_text().splitlines()]
+        assert len(recs) == 2
+        assert recs[0]["human_color"] == "black" and recs[1]["human_color"] == "white"
+        assert all(r["winner"] in ("black", "white", "draw") and "moves" in r for r in recs)
+
+        rep = _call(base, "/api/finetune_all", {})
+        assert rep["n_games"] == 2 and "loss_after" in rep
+    finally:
+        httpd.shutdown()
+
+
 def test_index_serves_html(server):
     # serves web/dist/index.html when the React app is built, otherwise a
     # fallback info page — either way it's HTML with a mounting point.

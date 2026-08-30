@@ -133,6 +133,22 @@ def test_finetune_from_game_runs_and_guardrails(bot):
         assert bot.games_finetuned == 1
 
 
+def test_finetune_from_games_batches_multiple(bot):
+    games = [
+        {"moves": _random_game(10)[0], "human_color": "black"},
+        {"moves": _random_game(11)[0], "human_color": "white"},
+        {"moves": _random_game(12)[0], "human_color": "black"},
+    ]
+    v0 = bot.version
+    report = bot.finetune_from_games(games)
+    assert np.isfinite(report.loss_before) and np.isfinite(report.loss_after)
+    assert len(report.grades) > 0
+    # grades are tagged with which game they came from
+    assert {g["game"] for g in report.grades} <= {0, 1, 2}
+    assert 0.0 <= report.winrate_vs_random_after <= 1.0
+    assert bot.version in (v0, v0 + 1)  # +1 unless the guardrail rolled it back
+
+
 def test_reset_to_baseline(bot):
     import torch
     baseline = {k: v.clone() for k, v in bot._baseline_state.items()}

@@ -400,93 +400,122 @@ class OthelloBot:
                 state = state.apply(opp.select_move(state))
         return transitions
 
+    def _build_game_transitions(self, actions: Sequence[int], human_color: str):
+        """Grade the bot's moves in one game and build its DQN transitions
+        (with blunder / best-move shaping). Returns
+        ``(transitions, grades, n_reinforced, n_penalised)``."""
+        cfg = self.ft
+        bot_color = WHITE if str(human_color).lower().startswith("b") else BLACK
+        states = [Board.initial()]
+        for a in actions:
+            a = int(a)
+            mv = None if (a == PASS_ACTION or not states[-1].legal_moves()) else action_to_rc(a)
+            states.append(states[-1].apply(mv))
+        winner = states[-1].winner() if states[-1].is_terminal() else 0
+
+        grades: List[dict] = []
+        trans: List[tuple] = []
+        n_reinf = n_pen = 0
+
+        for i, a in enumerate(actions):
+            a = int(a)
+            s = states[i]
+            if s.is_terminal() or s.player != bot_color or not s.legal_moves():
+                continue
+            g = self.grade_move(s, a)
+            label, best, coach_a = g["label"], g["bot_best"], g["coach_best"]
+
+            j = i + 1
+            while j < len(states) and not states[j].is_terminal() and states[j].player != bot_color:
+                j += 1
+            nxt = states[j] if j < len(states) else states[-1]
+            done = nxt.is_terminal()
+            r = 0.0
+            if done:
+                r = 1.0 if winner == bot_color else (-1.0 if winner == opponent(bot_color) else 0.0)
+            obs, next_obs = encode_observation(s), encode_observation(nxt)
+            next_mask = legal_action_mask(nxt)
+            trans.append((obs, a, r, next_obs, done, next_mask))
+
+            penalised = reinforced = False
+            if label in ("Mistake", "Blunder") and coach_a != a:
+                trans.append((obs, a, -cfg.blunder_penalty, next_obs, True, next_mask))
+                trans.append((obs, coach_a, cfg.great_bonus, next_obs, True, next_mask))
+                penalised, n_pen = True, n_pen + 1
+            elif label in ("Best", "Excellent") and a == best:
+                bonus = max(cfg.great_bonus, r if done else 0.0)
+                trans.append((obs, a, bonus, next_obs, True, next_mask))
+                reinforced, n_reinf = True, n_reinf + 1
+
+            grades.append({
+                "ply": i, "side": _side(s.player), "played": a, "played_san": _san(a),
+                "best": int(best), "best_san": _san(int(best)),
+                "coach": int(coach_a), "coach_san": _san(int(coach_a)),
+                "q_played": float(g["q"][a]), "q_best": float(g["q"][best]),
+                "drop": g["regret"], "label": label, "glyph": g["glyph"],
+                "penalised": penalised, "reinforced": reinforced,
+            })
+        return trans, grades, n_reinf, n_pen
+
+    def _run_finetune(self, trans, grades, n_reinf, n_pen, progress=None) -> FineTuneReport:
+        """Push ``trans`` into the anchored buffer, train, and keep the update
+        only if it doesn't weaken the bot vs Random (paired, same seed)."""
+        cfg = self.ft
+        buf = self._ensure_buffer()
+        for _ in range(cfg.emphasis):
+            for tr in trans:
+                buf.add(*tr)
+
+        wr_before = self._winrate_vs_random(cfg.guardrail_games)
+        prev_state = copy.deepcopy(self.agent.net.state_dict())
+        loss_before, loss_after = self._train(cfg, progress)
+        wr_after = self._winrate_vs_random(cfg.guardrail_games)
+
+        rolled_back = wr_after < wr_before - cfg.guardrail_margin
+        if rolled_back:
+            self.agent.net.load_state_dict(prev_state)
+            self.agent.net.eval()
+        else:
+            self.version += 1
+            self.games_finetuned += 1
+            self.agent.meta.extra["games_finetuned"] = self.games_finetuned
+            self._save_version()
+
+        return FineTuneReport(
+            version=self.version, games_finetuned=self.games_finetuned,
+            grad_steps=cfg.grad_steps, loss_before=loss_before, loss_after=loss_after,
+            n_reinforced=n_reinf, n_penalised=n_pen,
+            winrate_vs_random_before=wr_before, winrate_vs_random_after=wr_after,
+            rolled_back=rolled_back, grades=grades,
+        )
+
     def finetune_from_game(self, actions: Sequence[int], human_color: str,
                            progress=None) -> FineTuneReport:
         with self._lock:
-            cfg = self.ft
-            bot_color = WHITE if human_color.lower().startswith("b") else BLACK
-            states = [Board.initial()]
-            for a in actions:
-                a = int(a)
-                mv = None if (a == PASS_ACTION or not states[-1].legal_moves()) else action_to_rc(a)
-                states.append(states[-1].apply(mv))
-            final = states[-1]
-            winner = final.winner() if final.is_terminal() else 0
+            trans, grades, n_reinf, n_pen = self._build_game_transitions(actions, human_color)
+            return self._run_finetune(trans, grades, n_reinf, n_pen, progress)
 
-            buf = self._ensure_buffer()
-            grades: List[dict] = []
-            game_trans: List[tuple] = []
+    def finetune_from_games(self, games: Sequence[dict], progress=None) -> FineTuneReport:
+        """Fine-tune from many recorded games at once (one training pass, one
+        guardrail check). Each game dict needs ``moves``/``actions`` and
+        ``human_color``."""
+        with self._lock:
+            all_trans: List[tuple] = []
+            all_grades: List[dict] = []
             n_reinf = n_pen = 0
-
-            for i, a in enumerate(actions):
-                a = int(a)
-                s = states[i]
-                if s.is_terminal() or s.player != bot_color or not s.legal_moves():
-                    continue
-                g = self.grade_move(s, a)
-                label, best, coach_a = g["label"], g["bot_best"], g["coach_best"]
-
-                # transition to the next bot state
-                j = i + 1
-                while j < len(states) and not states[j].is_terminal() and states[j].player != bot_color:
-                    j += 1
-                nxt = states[j] if j < len(states) else states[-1]
-                done = nxt.is_terminal()
-                r = 0.0
-                if done:
-                    r = 1.0 if winner == bot_color else (-1.0 if winner == opponent(bot_color) else 0.0)
-                obs, next_obs = encode_observation(s), encode_observation(nxt)
-                next_mask = legal_action_mask(nxt)
-                game_trans.append((obs, a, r, next_obs, done, next_mask))
-
-                # shaping: hard signal for clear blunders / clear best moves
-                penalised = reinforced = False
-                if label in ("Mistake", "Blunder") and coach_a != a:
-                    game_trans.append((obs, a, -cfg.blunder_penalty, next_obs, True, next_mask))
-                    game_trans.append((obs, coach_a, cfg.great_bonus, next_obs, True, next_mask))
-                    penalised, n_pen = True, n_pen + 1
-                elif label in ("Best", "Excellent") and a == best:
-                    bonus = max(cfg.great_bonus, r if done else 0.0)
-                    game_trans.append((obs, a, bonus, next_obs, True, next_mask))
-                    reinforced, n_reinf = True, n_reinf + 1
-
-                grades.append({
-                    "ply": i, "side": _side(s.player), "played": a, "played_san": _san(a),
-                    "best": int(best), "best_san": _san(int(best)),
-                    "coach": int(coach_a), "coach_san": _san(int(coach_a)),
-                    "q_played": float(g["q"][a]), "q_best": float(g["q"][best]),
-                    "drop": g["regret"], "label": label, "glyph": g["glyph"],
-                    "penalised": penalised, "reinforced": reinforced,
-                })
-
-            # push game transitions (emphasised) into the anchored buffer
-            for _ in range(cfg.emphasis):
-                for tr in game_trans:
-                    buf.add(*tr)
-
-            wr_before = self._winrate_vs_random(cfg.guardrail_games)
-            prev_state = copy.deepcopy(self.agent.net.state_dict())
-            loss_before, loss_after = self._train(cfg, progress)
-            wr_after = self._winrate_vs_random(cfg.guardrail_games)
-
-            rolled_back = False
-            if wr_after < wr_before - cfg.guardrail_margin:
-                self.agent.net.load_state_dict(prev_state)
-                self.agent.net.eval()
-                rolled_back = True
-            else:
-                self.version += 1
-                self.games_finetuned += 1
-                self.agent.meta.extra["games_finetuned"] = self.games_finetuned
-                self._save_version()
-
-            return FineTuneReport(
-                version=self.version, games_finetuned=self.games_finetuned,
-                grad_steps=cfg.grad_steps, loss_before=loss_before, loss_after=loss_after,
-                n_reinforced=n_reinf, n_penalised=n_pen,
-                winrate_vs_random_before=wr_before, winrate_vs_random_after=wr_after,
-                rolled_back=rolled_back, grades=grades,
-            )
+            for gi, game in enumerate(games):
+                actions = game.get("moves") or game.get("actions") or []
+                hc = game.get("human_color", "black")
+                t, gr, nr, np_ = self._build_game_transitions(actions, hc)
+                all_trans += t
+                for row in gr:
+                    row["game"] = gi
+                all_grades += gr
+                n_reinf += nr
+                n_pen += np_
+                if progress:
+                    progress(gi + 1, len(games))
+            return self._run_finetune(all_trans, all_grades, n_reinf, n_pen)
 
     def _train(self, cfg: FineTuneConfig, progress=None) -> Tuple[float, float]:
         import torch.nn.functional as F

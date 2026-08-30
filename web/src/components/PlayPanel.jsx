@@ -54,8 +54,11 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame }) {
         if (stop) return;
         setApiReady(true);
         if (auto && ["black", "white", "random"].includes(auto)) { startGame(auto); return; }
-        const st = await api("/state");   // resume/keep the current game across refreshes
-        if (!stop && st.ply > 0) { loadGame(st); refreshEval(); }
+        let st = await api("/state");   // resume/keep the current game across refreshes
+        if (stop || st.ply === 0) return;
+        // if we refreshed while the bot still owed a reply, collect it
+        if (!st.game_over && !st.your_turn) st = await api("/bot_move");
+        if (!stop) { loadGame(st); refreshEval(); }
       } catch {
         if (!stop) setTimeout(ping, 2000);
       }
@@ -86,13 +89,24 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame }) {
     }
   }, [game?.ply, game?.must_pass, game?.your_turn, game?.game_over, viewPly]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const BOT_DELAY_MS = 550;
+
   async function move(action) {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
     try {
-      loadGame(await api("/move", { action }));
+      // 1. apply the human move only, so it lands on the board immediately
+      let st = await api("/move", { action, bot_reply: false });
+      loadGame(st);
       await refreshEval();
+      // 2. after a short pause, let the bot reply (may be several plies if we pass)
+      if (!st.game_over && !st.your_turn) {
+        await new Promise((r) => setTimeout(r, BOT_DELAY_MS));
+        st = await api("/bot_move");
+        loadGame(st);
+        await refreshEval();
+      }
     } catch (e) {
       setGame((g) => ({ ...g, _err: e.message }));
     } finally {
@@ -101,10 +115,15 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame }) {
     }
   }
 
-  async function finetune() {
+  const [savedGames, setSavedGames] = useState(0);
+  useEffect(() => {
+    if (game?.game_over) api("/games").then((d) => setSavedGames(d.count)).catch(() => {});
+  }, [game?.game_over, game?.ply]);
+
+  async function finetune(scope) {
     setFt({ report: null, error: null, running: true });
     try {
-      const report = await api("/finetune", {});
+      const report = await api(scope === "all" ? "/finetune_all" : "/finetune", {});
       setFt({ report, error: null, running: false });
       onBotChanged?.();
     } catch (e) {
@@ -209,15 +228,21 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame }) {
               <button className="primary" onClick={() => onAnalyzeGame?.(game.history_actions)}>
                 Analyse this game
               </button>
-              <button onClick={finetune} disabled={ft.running}>
-                {ft.running ? "Fine-tuning… (≈5–20s)" : "Fine-tune bot from this game"}
+              <button onClick={() => finetune()} disabled={ft.running}>
+                {ft.running ? "Fine-tuning…" : "Fine-tune from this game"}
               </button>
+              {savedGames > 1 && (
+                <button onClick={() => finetune("all")} disabled={ft.running}>
+                  Fine-tune from all {savedGames} saved games
+                </button>
+              )}
             </div>
             <p className="hint">
-              <b>Analyse</b> opens the analysis board on this game.
-              &nbsp;<b>Fine-tune</b> rewards the bot's good moves and penalises its blunders
-              (graded by a fast positional check), runs a short training pass, and keeps the
-              update only if the bot doesn't get weaker vs a random opponent.
+              Every finished game is saved to <code>webapp_state/games.jsonl</code>
+              (also usable for offline training — see <code>scripts/finetune_from_games.py</code>).
+              <b> Fine-tune</b> rewards the bot's good moves and penalises its blunders,
+              runs a short training pass, and keeps the update only if the bot doesn't get
+              weaker vs a random opponent.
             </p>
             <FineTuneResult report={ft.report} error={ft.error} />
           </div>

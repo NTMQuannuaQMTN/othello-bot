@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 import traceback
 from dataclasses import asdict, is_dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -56,6 +57,34 @@ class AppState:
         self.session = GameSession(bot)
         self.lock = threading.Lock()
         self.static_dir = Path(static_dir) if static_dir else DEFAULT_STATIC_DIR
+        self.games_path = (Path(bot.state_dir) / "games.jsonl") if bot.state_dir else None
+        self._recorded = False  # has the current game already been appended?
+
+    def record_if_finished(self) -> None:
+        """Append a finished human-vs-bot game to games.jsonl (once)."""
+        if not self.games_path or self._recorded:
+            return
+        st = self.session
+        if not st.board.is_terminal() or len(st.history) == 0:
+            return
+        self._recorded = True
+        b, w = st.board.scores()
+        rec = {
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "human_color": "black" if st.human_color == 1 else "white",
+            "moves": list(st.history),
+            "winner": ("black" if st.board.winner() == 1
+                       else "white" if st.board.winner() == -1 else "draw"),
+            "score": {"black": b, "white": w},
+            "bot_version": self.bot.version,
+        }
+        with self.games_path.open("a") as fh:
+            fh.write(json.dumps(rec) + "\n")
+
+    def load_games(self) -> list:
+        if not self.games_path or not self.games_path.is_file():
+            return []
+        return [json.loads(ln) for ln in self.games_path.read_text().splitlines() if ln.strip()]
 
 
 def make_handler(app: AppState):
@@ -83,16 +112,40 @@ def make_handler(app: AppState):
 
     @route("POST /api/new")
     def _new(body):
+        app._recorded = False
         return app.session.new_game(body.get("human_color", "black"),
                                     int(body.get("level", 0)))
 
     @route("POST /api/move")
     def _move(body):
-        return app.session.human_move(int(body["action"]))
+        # bot_reply=false: apply only the human move (the client then calls
+        # /api/bot_move after a short pause so the bot's reply is visible).
+        st = app.session.human_move(int(body["action"]),
+                                    bot_reply=body.get("bot_reply", True))
+        app.record_if_finished()
+        return st
 
     @route("POST /api/bot_move")
     def _bot_move(_):
-        return app.session.bot_move()
+        st = app.session.bot_move()
+        app.record_if_finished()
+        return st
+
+    @route("GET /api/games")
+    def _games(_):
+        games = app.load_games()
+        return {"count": len(games),
+                "path": str(app.games_path) if app.games_path else None}
+
+    @route("POST /api/finetune_all")
+    def _finetune_all(_):
+        games = app.load_games()
+        if not games:
+            raise ValueError("no saved games yet — play a few games first")
+        report = app.bot.finetune_from_games(games)
+        report_d = asdict(report)
+        report_d["n_games"] = len(games)
+        return report_d
 
     @route("POST /api/analyse")
     def _analyse(body):

@@ -90,7 +90,8 @@ src/othello_rl/
   utils/        config.py seed.py logging.py experiment.py plots.py progress.py
   webapp/       bot_service.py session.py moves.py server.py   (Python JSON API)
 web/            React + Vite front end (npm run dev / build)
-scripts/        train.py selfplay.py evaluate.py track.py play.py serve.py bot_cli.py
+scripts/        train.py selfplay.py evaluate.py eval_bot.py track.py play.py
+                serve.py bot_cli.py finetune_from_games.py
 models/         othello_bot_v1.pt          # the bundled bot
 tests/          mirrors src/
 ```

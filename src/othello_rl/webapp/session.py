@@ -39,7 +39,7 @@ class GameSession:
         return self.state()
 
     # -- moves ------------------------------------------------------
-    def human_move(self, action: int) -> dict:
+    def human_move(self, action: int, bot_reply: bool = True) -> dict:
         if self.board.is_terminal():
             raise ValueError("game is over")
         if self.board.player != self.human_color:
@@ -49,7 +49,9 @@ class GameSession:
         if action not in legal:
             raise ValueError(f"illegal move; legal = {legal}")
         self._apply(action)
-        self._bot_turn()
+        self.last_bot_moves = []
+        if bot_reply:
+            self._bot_turn()
         return self.state()
 
     def bot_move(self) -> dict:

@@ -126,6 +126,34 @@ def test_eval_bot_script_smoke(tmp_path):
     assert "minimax:2" in data["panel"]
 
 
+def test_finetune_from_games_script(tmp_path):
+    import json as _json
+    import random as _random
+    from othello_rl.environment.board import Board
+
+    # build a couple of fake recorded games
+    games = tmp_path / "games.jsonl"
+    lines = []
+    for s in (1, 2):
+        rng = _random.Random(s)
+        st = Board.initial()
+        acts = []
+        while not st.is_terminal():
+            lm = st.legal_moves()
+            if not lm:
+                st = st.apply(None); acts.append(64); continue
+            m = rng.choice(lm); acts.append(m[0] * 8 + m[1]); st = st.apply(m)
+        lines.append(_json.dumps({"moves": acts, "human_color": "black" if s == 1 else "white",
+                                  "winner": "black"}))
+    games.write_text("\n".join(lines) + "\n")
+
+    r = _run([str(SCRIPTS / "finetune_from_games.py"), "--games", str(games),
+              "--checkpoint", "models/othello_bot_v1.pt", "--grad-steps", "6",
+              "--guardrail-games", "6", "--out", str(tmp_path / "v2.pt")])
+    assert r.returncode == 0, r.stderr
+    assert "TD loss" in r.stdout
+
+
 def test_bot_cli_protocol():
     inp = "name\ngenmove\ngenmove f5d6c3\neval f5d6\nbogus\nquit\n"
     r = _run([str(SCRIPTS / "bot_cli.py"), "--checkpoint", "models/othello_bot_v1.pt"],
