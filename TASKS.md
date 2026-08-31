@@ -240,9 +240,17 @@ labeller, **not an oracle**.
       a **candidate** under `checkpoints/experiments/egaroucid_ft_*.pt` (git-ignored)
       — production/registry untouched, promotion stays a separate script step.
       `eval_external.match.{records_to_training_games,finetune_on_records}`.
+- [x] `scripts/train_vs_egaroucid.py` — unattended long run (`--hours 8`):
+      play→fine-tune every round until a deadline, Egaroucid level ramps
+      `--level-start`→`--level-end`. Storage-light (no match JSONs): only
+      latest/best/hourly/final `.pt` + `progress.jsonl` + `run.json` under
+      `checkpoints/experiments/egaroucid_train_<stamp>/`. `best.pt` picked by a
+      periodic vs-Random+Greedy check; anchor buffer periodically refilled;
+      engine auto-restarts on failure; `Ctrl-C`/`touch STOP` finalises; `--resume`.
+      Ends with a base-vs-final-vs-best eval. Production/registry untouched.
 - [x] `docs/egaroucid-eval.md` (protocol, build command, the exact run command,
       baseline result, the speed finding, the `--train` flow).
-- [x] `tests/eval_external/test_egaroucid_bridge.py` (20): coord round-trips,
+- [x] `tests/eval_external/test_egaroucid_bridge.py` (21): coord round-trips,
       GTP parser, fake-engine game loop (both colours), forced-pass logging,
       illegal-RL-move abort, colour alternation, real-engine game when the
       executable is present, `records_to_training_games`, `finetune_on_records`

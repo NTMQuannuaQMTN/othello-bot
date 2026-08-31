@@ -31,9 +31,16 @@ forward pass — no search). Results in `results/egaroucid/`.
   `checkpoints/production/` + `registry.json` are never touched, promotion stays
   `scripts/promote_model.py`. Example: fine-tune #1 kept, win% vs Random
   0.933→0.900 (within guardrail). Learning from 10 losses doesn't dent Egaroucid.
+- **`scripts/train_vs_egaroucid.py --hours 8`:** unattended play→fine-tune loop
+  until a deadline; Egaroucid level ramps `--level-start`→`--level-end` (1→8).
+  Storage-light — no match JSONs, just latest/best/hourly/final `.pt` +
+  `progress.jsonl` + `run.json` under `checkpoints/experiments/egaroucid_train_<stamp>/`
+  (git-ignored). `best.pt` by a periodic vs-Random+Greedy check; anchor buffer
+  refilled every N rounds; engine auto-restarts; `Ctrl-C`/`touch STOP` finalises;
+  `--resume <dir>`. Ends with a base-vs-final-vs-best eval. Production untouched.
 - Model architecture / training data / training config / production checkpoint /
   registry unchanged; added `eval_external/`, the script, `tests/eval_external/`
-  (20) and `results/egaroucid/`. Engine folder + `.DS_Store` git-ignored. Docs:
+  (21) and `results/egaroucid/`. Engine folder + `.DS_Store` git-ignored. Docs:
   `docs/egaroucid-eval.md`.
 
 ## Current task
@@ -152,9 +159,9 @@ the empirical training results in `experiments/` stand.
 All results: `experiments/RESULTS.md`.
 
 ## Test status
-`python3 -m pytest` → **250 passed** (~150 s). +20 this session for the
-Egaroucid GTP bridge + `--train` (`tests/eval_external/`, incl. a real-engine
-game that skips when the executable is absent).
+`python3 -m pytest` → **251 passed** (~150 s). +21 this session for the
+Egaroucid GTP bridge + `--train` + the long-run trainer (`tests/eval_external/`,
+incl. real-engine tests that skip when the executable is absent).
 
 Extra verification run this pass (ad-hoc scripts, not in the suite): all-agent-pair
 integration sweep with per-ply invariants; dihedral symmetry; RL-env reward-sign

@@ -206,6 +206,39 @@ guardrail) → kept. The match JSON gains a `"training"` block with the per-roun
 gap to Egaroucid — it is exposed because the pipeline supports it and the
 guardrail makes it safe.
 
+### Unattended long run — `scripts/train_vs_egaroucid.py`
+
+For a sustained self-improvement loop (hours, not one pass):
+
+```bash
+python3 scripts/train_vs_egaroucid.py --hours 8
+```
+
+Each round = one short match + one fine-tune, forever until the deadline.
+Egaroucid's level **ramps** `--level-start` → `--level-end` (default 1 → 8) across
+the run. **No per-match result files** — storage is just a handful of
+checkpoints + a compact `progress.jsonl`:
+
+```
+checkpoints/experiments/egaroucid_train_<stamp>/     (git-ignored)
+  latest.pt / best.pt / best.json / snapshots/hNN.pt / final.pt
+  progress.jsonl   one numeric row per round
+  run.json         config + live status + the final base-vs-final-vs-best eval
+  train.log
+```
+
+`best.pt` is chosen by a real vs-Random+Greedy check every `--best-eval-every`
+rounds (not the noisy guardrail number). The anchor (baseline) buffer is topped
+up every `--anchor-refill-every` rounds so a long run can't slowly forget how to
+beat Random. Stop early with `Ctrl-C` or `touch <out>/STOP` — it still finalises
+(saves `final.pt`, runs the eval). Resume a killed run with
+`--resume <out-dir>`. Key knobs: `--games`, `--grad-steps`, `--guardrail-games`,
+`--level-start/-end`, `--hours/--minutes/--seconds`, `--max-rounds`.
+
+Production and the registry are never touched; when the run ends, evaluate the
+candidate with `scripts/eval_bot.py --checkpoint <out>/best.pt --vs-production`
+and promote it only if it earns it.
+
 ## What is guaranteed unchanged
 
 Without `--train`, the model is untouched. **With** `--train` the in-memory model

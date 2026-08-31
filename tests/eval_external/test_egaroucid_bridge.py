@@ -9,6 +9,7 @@ game if a built executable happens to be on disk.
 from __future__ import annotations
 
 import io
+import json
 
 import pytest
 
@@ -310,6 +311,38 @@ def test_finetune_on_records_runs_and_respects_the_guardrail():
     changed = any(not torch.equal(b, a) for b, a in zip(before, after))
     # rolled back -> weights restored exactly; kept -> weights moved
     assert changed == (not rep.rolled_back)
+
+
+def test_train_vs_egaroucid_end_to_end_if_available(tmp_path):
+    """The long-run trainer, scaled to a few seconds — needs the executable."""
+    try:
+        find_egaroucid()
+    except EgaroucidError:
+        pytest.skip("Egaroucid executable not built/available")
+    import importlib.util
+    from pathlib import Path as _P
+    root = _P(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location(
+        "train_vs_egaroucid", root / "scripts" / "train_vs_egaroucid.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    out = tmp_path / "run"
+    rc = mod.main([
+        "--seconds", "3", "--games", "2", "--level-start", "1", "--level-end", "1",
+        "--grad-steps", "2", "--guardrail-games", "4", "--anchor-transitions", "40",
+        "--best-eval-every", "1", "--best-eval-games", "6", "--eval-games", "6",
+        "--out", str(out),
+    ])
+    assert rc == 0
+    assert (out / "final.pt").is_file()
+    assert (out / "progress.jsonl").is_file()
+    run = json.loads((out / "run.json").read_text())
+    assert run["status"] == "done"
+    assert run["rounds"] >= 1
+    assert set(run["eval"]) == {"base", "final", "best"}
+    # every progress row is valid json with the expected shape
+    rows = [json.loads(l) for l in (out / "progress.jsonl").read_text().splitlines() if l.strip()]
+    assert rows and all("round" in r and "level" in r for r in rows)
 
 
 # --------------------------------------------------------------------------- #
