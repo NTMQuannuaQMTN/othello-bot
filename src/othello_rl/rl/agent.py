@@ -96,15 +96,22 @@ class DQNAgent(Agent):
         return divmod(action, BOARD_SIZE)
 
     # -- checkpointing ------------------------------------------------
-    def save(self, path) -> None:
+    def save(self, path, **extra) -> None:
+        """Write a checkpoint. ``extra`` keys (e.g. ``optimizer``, ``version``,
+        ``train_config``, ``seed``, ``metrics``) are merged into the saved dict;
+        the base keys (``net_config`` / ``state_dict`` / ``meta``) are always
+        present so any reader — including old ``format: 1`` code — still works.
+        See :mod:`othello_rl.rl.checkpoint` for the richer helpers."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        torch.save({
-            "format": 1,
+        payload = {
+            "format": 2 if extra else 1,
             "net_config": asdict(self.net_config),
             "state_dict": self.net.state_dict(),
             "meta": asdict(self.meta),
-        }, path)
+        }
+        payload.update(extra)
+        torch.save(payload, path)
 
     def load(self, path, strict: bool = True) -> "DQNAgent":
         ckpt = torch.load(Path(path), map_location=self.device, weights_only=False)

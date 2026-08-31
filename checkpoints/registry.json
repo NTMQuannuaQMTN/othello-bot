@@ -1,0 +1,21 @@
+{
+  "model_version": "v001_curriculum_selfplay",
+  "checkpoint": "checkpoints/production/best.pt",
+  "parent": "v000_initial",
+  "method": "380k-step fixed-opponent curriculum + 120k-step self-play (see models/README.md)",
+  "training_games": 0,
+  "trained_env_steps": 120000,
+  "evaluation": {
+    "win_rate_vs_random": 0.93,
+    "win_rate_vs_greedy": 0.90,
+    "win_rate_vs_heuristic": 0.36,
+    "win_rate_vs_minimax:2": 0.08,
+    "win_rate_vs_best": null,
+    "internal_elo": 2002,
+    "source": "experiments/20260830-183834_eval_othello_bot_v1"
+  },
+  "promotion_criterion": "wilson_lb(win_rate vs current best) > 0.5 AND win_rate vs random >= prev - slack AND win_rate vs greedy >= prev - slack",
+  "promoted_at": "2026-08-31T00:00:00+00:00",
+  "seed": 0,
+  "forced": false
+}

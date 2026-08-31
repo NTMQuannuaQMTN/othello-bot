@@ -53,7 +53,7 @@ class TrainMetrics:
 
 class DQNTrainer:
     def __init__(self, env, agent: DQNAgent, config: Optional[DQNConfig] = None,
-                 seed: Optional[int] = None):
+                 seed: Optional[int] = None, resume_state=None):
         self.env = env
         self.agent = agent
         self.cfg = config or DQNConfig()
@@ -69,6 +69,26 @@ class DQNTrainer:
         self._ep_return = 0.0
         self._returns = deque(maxlen=100)
         self._obs, self._info = self.env.reset(seed=seed)
+        if resume_state is not None:
+            self.load_resume_state(resume_state)
+
+    # -- resume (weights are restored on the agent by the caller) -------
+    def load_resume_state(self, rs) -> None:
+        """Adopt counters + optimizer + RNG from a
+        :class:`othello_rl.rl.checkpoint.ResumeState`. The replay buffer is not
+        restored; it re-warms from fresh rollouts."""
+        from .checkpoint import restore_rng_state
+        self.env_steps = int(rs.env_steps)
+        self.train_steps = int(rs.train_steps)
+        self.episodes = int(rs.episodes)
+        if getattr(rs, "optimizer_state", None) is not None:
+            self.opt.load_state_dict(rs.optimizer_state)
+        self.target.load_state_dict(self.agent.net.state_dict())
+        restore_rng_state(getattr(rs, "rng_state", None))
+
+    def training_state(self) -> Dict[str, object]:
+        return {"env_steps": self.env_steps, "train_steps": self.train_steps,
+                "episodes": self.episodes, "optimizer_state": self.opt.state_dict()}
 
     # -- rollout ----------------------------------------------------
     def collect_step(self) -> None:

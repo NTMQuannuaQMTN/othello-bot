@@ -62,30 +62,38 @@ def _make_eval_fn(agent, cfg: CurriculumConfig, logger: MetricLogger, stage_name
 
 
 def run_curriculum(agent: DQNAgent, cfg: CurriculumConfig, run_dir: str | Path,
-                   seed: int = 0, progress: "bool | str" = "auto") -> MetricLogger:
+                   seed: int = 0, progress: "bool | str" = "auto",
+                   resume_state=None) -> MetricLogger:
     run_dir = Path(run_dir)
     ckpt_dir = run_dir / "checkpoints"
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     logger = MetricLogger(run_dir / "metrics.jsonl")
 
     grand_total = sum(s.env_steps for s in cfg.stages)
+    if resume_state is not None:
+        grand_total += int(resume_state.env_steps)
     bar = make_progress(grand_total, enabled=progress, desc="curriculum")
 
-    # baseline: evaluate the untrained network first (the comparison anchor)
-    base = evaluate_agent(agent, cfg.eval_opponents, num_games=cfg.eval_games, seed=cfg.eval_seed)
-    logger.log(phase="eval", stage="<untrained>", env_steps=0, train_steps=0,
-               **flatten_eval(base))
-    bar.write(f"[<untrained>] baseline eval:  {_fmt_eval(flatten_eval(base))}")
-    agent.save(ckpt_dir / "untrained.pt")
+    if resume_state is not None:
+        bar.write(f"[resume] {resume_state.version or '?'} from {resume_state.source} "
+                  f"@ env_steps={resume_state.env_steps} train_steps={resume_state.train_steps}")
+    else:
+        # baseline: evaluate the untrained network first (the comparison anchor)
+        base = evaluate_agent(agent, cfg.eval_opponents, num_games=cfg.eval_games,
+                              seed=cfg.eval_seed)
+        logger.log(phase="eval", stage="<untrained>", env_steps=0, train_steps=0,
+                   **flatten_eval(base))
+        bar.write(f"[<untrained>] baseline eval:  {_fmt_eval(flatten_eval(base))}")
+        agent.save(ckpt_dir / "untrained.pt")
 
     trainer: Optional[DQNTrainer] = None
-    total_env_steps = 0
+    total_env_steps = int(resume_state.env_steps) if resume_state is not None else 0
     for stage_idx, stage in enumerate(cfg.stages):
         env = FixedOpponentEnv(stage.opponent, learner_color=stage.learner_color,
                                seed=seed + 101 * (stage_idx + 1),
                                opening_plies=stage.opening_plies)
         if trainer is None:
-            trainer = DQNTrainer(env, agent, cfg.dqn, seed=seed)
+            trainer = DQNTrainer(env, agent, cfg.dqn, seed=seed, resume_state=resume_state)
         else:
             trainer.env = env
             trainer._obs, trainer._info = env.reset(seed=seed)
@@ -129,9 +137,32 @@ def run_curriculum(agent: DQNAgent, cfg: CurriculumConfig, run_dir: str | Path,
         total_env_steps = trainer.env_steps
 
     bar.close()
-    agent.save(ckpt_dir / "final.pt")
+
+    # a full checkpoint: weights + optimizer + counters + RNG, so `train.py
+    # --resume` can continue exactly where this stopped.
+    from .checkpoint import capture_rng_state, next_experiment_version, save_checkpoint
+    trainer._sync_agent_meta()
+    last_eval = next((r for r in reversed(logger.rows) if r.get("phase") == "eval"), None)
+    version = (getattr(resume_state, "version", None)
+               or next_experiment_version())
+    save_checkpoint(
+        ckpt_dir / "final.pt", agent, optimizer=trainer.opt,
+        train_step=trainer.train_steps, episode=trainer.episodes,
+        train_config=_dqn_cfg_dict(cfg.dqn), seed=seed,
+        rng_state=capture_rng_state(), experiment=run_dir.name,
+        metrics={k: v for k, v in (last_eval or {}).items() if k.startswith("winrate_vs_")},
+        version=version, parent=getattr(resume_state, "version", None),
+    )
     logger.log(phase="done", env_steps=total_env_steps)
     return logger
+
+
+def _dqn_cfg_dict(dqn) -> dict:
+    from dataclasses import asdict
+    try:
+        return asdict(dqn)
+    except TypeError:  # pragma: no cover
+        return {}
 
 
 def _mean_return(trainer: DQNTrainer) -> float:

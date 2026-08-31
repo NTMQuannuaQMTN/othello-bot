@@ -1,15 +1,37 @@
 # Progress
 
-_Last updated: 2026-08-30_
+_Last updated: 2026-08-31_
 
 ## Current phase
-Phases 1–10 complete and validated. Full spec audit done (see AUDIT below):
+Phases 1–11 complete and validated. Full spec audit done (see AUDIT below):
 5 latent issues fixed with regressions; 2 spec-gap features added
 (`scripts/eval_bot.py` standard protocol incl. Minimax; resumable self-play).
+Phase 11: persistent model & checkpoint management.
 
 ## Current task
-None in flight. Foundation is verified and stable. The only remaining work is
-the optional AlphaZero-style upgrade (`docs/alphazero-plan.md`).
+Web-app analysis/RL polish batch (in flight): per-move "best now" suggestion,
+corner reward/penalty shaping, eval-bar colour, move-list scroll containment.
+
+## Model lifecycle (verified 2026-08-31)
+
+The trained model is independent of the web-app runtime:
+
+- **Weights** live in `checkpoints/` (+ curated `models/`); the **active**
+  production model is named in `checkpoints/registry.json`.
+- `scripts/serve.py` resolves the model from the registry, **verifies** it plays
+  a legal opening move, prints its version/lineage, and never builds a random
+  net (missing file → exit 2; initial-model fallback → loud warning).
+- `OthelloBot` version/parent ride in the checkpoint meta, so a restart after a
+  kept fine-tune keeps the version (was hardcoded to 0 before).
+- In-app fine-tune writes only `webapp_state/` (scratch). Production changes
+  **only** via `scripts/promote_model.py` (evaluate vs best/random/greedy/
+  heuristic/minimax:2 → documented criterion → registry + `models/MODELS.md`).
+- `format: 2` checkpoints carry optimizer + counters + RNG; `train.py --resume`
+  continues training without resetting progress
+  (`tests/rl/test_checkpoint.py`). Replay buffer re-warms (documented in
+  `docs/training-and-models.md`); epsilon is `f(env_steps)`, no scheduler object.
+- Rebuilding the frontend (`npm run build` → `web/dist`) touches no checkpoint
+  (test: `test_appstate_does_not_touch_checkpoints`).
 
 ---
 
@@ -130,8 +152,10 @@ referee check over 150 episodes — all clean.
 - [ ] `webapp/moves.py::replay_positions` is now only used by its own test
       (`analyse_line` supersedes it). Harmless helper; keep or remove.
 - [ ] `MinimaxAgent.search_value` doesn't reset `self.nodes` (diagnostic only).
-- [ ] `bot_service._train` recreates the Adam optimizer every call (intentional
-      for independent nudges, but worth a comment).
+- [ ] `bot_service._train` recreates the Adam optimizer every call — intentional
+      (each in-app fine-tune is an independent short nudge on the *scratch* model;
+      its optimizer state is deliberately not persisted). The *curriculum* trainer
+      now does persist optimizer state — see `rl/checkpoint.py` + `train.py --resume`.
 - [ ] `configs/*.yaml` and dataclass defaults duplicate hyperparameters; the
       config is the source of truth for scripts but tests use dataclass defaults.
 

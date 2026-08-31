@@ -113,8 +113,12 @@ def make_handler(app: AppState):
 
     # ---- API handlers ------------------------------------------------
     @route("GET /api/bot")
+    @route("GET /api/model")
     def _bot_info(_):
-        return app.bot.info()
+        d = dict(app.bot.info())
+        d["dataset"] = str(app.games_path) if app.games_path else None
+        d["dataset_games"] = len(app.load_games())
+        return d
 
     @route("GET /api/state")
     def _state(_):
@@ -281,7 +285,7 @@ def _json_default(o):
 
 
 def serve(bot: OthelloBot, host: str = "127.0.0.1", port: int = 8000,
-          static_dir=None):
-    app = AppState(bot, static_dir=static_dir)
+          static_dir=None, games_path=None):
+    app = AppState(bot, static_dir=static_dir, games_path=games_path)
     httpd = ThreadingHTTPServer((host, port), make_handler(app))
     return httpd

@@ -16,6 +16,7 @@ if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 from othello_rl.rl.agent import DQNAgent, NetworkConfig  # noqa: E402
+from othello_rl.rl.checkpoint import resolve_checkpoint, restore_training  # noqa: E402
 from othello_rl.rl.curriculum import CurriculumConfig, Stage, run_curriculum  # noqa: E402
 from othello_rl.rl.trainer import DQNConfig  # noqa: E402
 from othello_rl.utils.config import dump_config, load_config  # noqa: E402
@@ -82,6 +83,10 @@ def main(argv=None) -> int:
     ap.add_argument("--steps-scale", type=float, default=1.0,
                     help="multiply every stage's env_steps (for quick smoke runs)")
     ap.add_argument("--stages", nargs="*", default=None, help="only run these stage names")
+    ap.add_argument("--resume", default=None,
+                    help="continue training from a checkpoint: 'latest', 'best', "
+                         "'vNNN', a path, or a previous run dir. Restores weights, "
+                         "optimizer, counters and RNG (the replay buffer re-warms).")
     ap.add_argument("--seed", type=int, default=None, help="override config seed")
     ap.add_argument("--tag", default=None, help="override run tag")
     ap.add_argument("--out", default="experiments")
@@ -97,8 +102,20 @@ def main(argv=None) -> int:
     run_dir = create_run_dir(args.out, args.tag or cfg.get("tag", "train"))
     dump_config(dict(cfg), run_dir / "resolved_config.yaml")
 
-    net_cfg = NetworkConfig(**cfg.get("network", {}))
-    agent = DQNAgent(net_cfg, device=str(cfg.get("device", "cpu")), seed=seed)
+    device = str(cfg.get("device", "cpu"))
+    resume_state = None
+    if args.resume:
+        src = resolve_checkpoint(args.resume)
+        if not src.is_file():
+            print(f"ERROR: --resume checkpoint not found: {src}", file=sys.stderr)
+            return 2
+        agent = DQNAgent(device=device, seed=seed)          # net rebuilt from the checkpoint
+        resume_state = restore_training(src, agent)          # optimizer state -> the trainer
+        print(f"resuming {resume_state.version or '?'} from {src} "
+              f"@ env_steps={resume_state.env_steps} train_steps={resume_state.train_steps}")
+    else:
+        net_cfg = NetworkConfig(**cfg.get("network", {}))
+        agent = DQNAgent(net_cfg, device=device, seed=seed)
 
     cur = build_curriculum(cfg, args.steps_scale, set(args.stages) if args.stages else None)
     write_metadata(run_dir, dict(cfg), extra={"steps_scale": args.steps_scale,
@@ -106,7 +123,8 @@ def main(argv=None) -> int:
     print(f"run dir: {run_dir}")
     print(f"stages: {[(s.name, s.env_steps) for s in cur.stages]}")
 
-    run_curriculum(agent, cur, run_dir, seed=seed, progress=progress)
+    run_curriculum(agent, cur, run_dir, seed=seed, progress=progress,
+                   resume_state=resume_state)
 
     opponents = list(cur.eval_opponents)
     make_plots(run_dir, opponents)

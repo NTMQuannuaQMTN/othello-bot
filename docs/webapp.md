@@ -111,22 +111,36 @@ restores the original weights.
 
 ### Using played games for future training
 
-Every finished game is appended to **`webapp_state/games.jsonl`**
-(`{ts, human_color, moves, winner, score, bot_version}` per line). You can:
+Every finished game is appended to **`data/games.jsonl`** (committed, append-only,
+deduplicated by move sequence across restarts — path configurable via
+`games_path` in `configs/webapp.yaml`), one line of
+`{ts, human_color, moves, winner, score, bot_version}`. You can:
 
 - **In the app** — "Fine-tune from all N saved games" on the game-over screen
   (`POST /api/finetune_all`): batches every saved game into one training pass.
 - **Offline** —
   ```
   python3 scripts/finetune_from_games.py \
-      --games webapp_state/games.jsonl --checkpoint models/othello_bot_v1.pt \
-      --out models/othello_bot_v2.pt --grad-steps 400
+      --games data/games.jsonl --checkpoint checkpoints/production/best.pt \
+      --out checkpoints/experiments/v002.pt --grad-steps 400
   ```
-  Same guardrail (kept only if it doesn't weaken the bot vs Random).
+  Same guardrail (kept only if it doesn't weaken the bot vs Random). To make the
+  result the model the site serves, promote it:
+  `python3 scripts/promote_model.py checkpoints/experiments/v002.pt --name v002 --games 200`
+  (see [`training-and-models.md`](training-and-models.md)).
 
 The game log is plain JSONL — you can also feed it into your own training code
 (`OthelloBot.finetune_from_games(list_of_game_dicts)` or roll your own using the
 engine + `rl/` trainer).
+
+### Which model is loaded
+
+`GET /api/model` (alias `GET /api/bot`) reports the live bot: `version`, `parent`,
+`source` (the resolved production checkpoint), `baseline` (whether
+`reset_to_baseline` restores the true base checkpoint or just the loaded state),
+`train_env_steps`, `games_finetuned`, and the `dataset` path + `dataset_games`
+count. On startup `scripts/serve.py` prints the same and verifies the model plays
+a legal opening move.
 
 ## The bot as a testable component
 
@@ -164,7 +178,7 @@ Commands: `genmove <transcript>`, `eval <transcript>`, `name`, `quit`.
 
 | method + path | body | returns |
 |---|---|---|
-| `GET /api/bot` | | bot info (version, params, games fine-tuned) |
+| `GET /api/bot` · `GET /api/model` | | loaded-model info (version, parent, source checkpoint, params, games fine-tuned, dataset) |
 | `GET /api/state` | | current game state |
 | `POST /api/new` | `{human_color, level}` | new game state |
 | `POST /api/move` | `{action, bot_reply?}` | state after your move (+ the bot's reply unless `bot_reply:false`) |

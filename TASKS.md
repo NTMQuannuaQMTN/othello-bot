@@ -135,3 +135,29 @@ pass, and the full suite is green.
 - [x] `scripts/bot_cli.py` line protocol for external harnesses (`genmove` / `eval`)
 - [x] `models/othello_bot_v1.pt` bundled bot + `docs/webapp.md` + `web/README.md`
 - [x] Tests: bot_service, moves, HTTP API, SPA fallback, serve/CLI smoke
+- [x] Durable game dataset: `data/games.jsonl` (committed, append-only,
+      cross-restart dedup by move sequence); `games_path` in `configs/webapp.yaml`
+
+## Phase 11 — Persistent model & checkpoint management
+
+- [x] `rl/checkpoint.py` — `format: 2` checkpoint (weights + optimizer + counters
+      + RNG + config + metrics + version/parent), back-compatible `load_checkpoint`,
+      `restore_training`, `resolve_checkpoint` (`latest`/`best`/`vNNN`/path/run-dir)
+- [x] `checkpoints/{initial,experiments,production}/` tree + `checkpoints/registry.json`
+      (the active-model pointer; committed except `experiments/`)
+- [x] `DQNAgent.save(**extra)` non-breaking; `DQNTrainer` resume (`state_dict` /
+      `load_resume_state`); `run_curriculum(resume_state=)` writes a full checkpoint
+- [x] `scripts/train.py --resume {latest,best,vNNN,path,run_dir}` — weights +
+      optimizer + counters + RNG, architecture from the checkpoint
+- [x] `scripts/promote_model.py` — evaluate candidate vs {best, random, greedy,
+      heuristic, minimax:2}; documented promotion criterion; only writer of
+      `production/` + registry + `models/MODELS.md`
+- [x] `scripts/serve.py` — resolve from registry, verify a legal opening move,
+      loud warning on initial-model fallback, never a random net; `GET /api/model`
+- [x] `OthelloBot`: version/parent survive a restart (ride in checkpoint meta);
+      `reset_to_baseline` restores the true base checkpoint
+- [x] `docs/training-and-models.md`, `models/MODELS.md`
+- [x] Tests: `tests/rl/test_checkpoint.py` (save/load identical preds, restart
+      loads trained ckpt, frontend rebuild doesn't touch ckpts, interrupted
+      training resumes, production protected from unevaluated / worse candidates,
+      resolver, no silent V0)

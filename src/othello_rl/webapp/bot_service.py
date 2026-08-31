@@ -141,13 +141,35 @@ class OthelloBot:
         self.ft = ft_config or FineTuneConfig()
         self._lock = threading.RLock()
         self._rng = random.Random(seed)
-        self.version = 0
+        # version / lineage survive a restart: they ride in the checkpoint meta,
+        # written by `_save_version` and read back here.
+        self.version = int(self.agent.meta.extra.get("version", 0))
+        self.parent = self.agent.meta.extra.get("parent")
         self.games_finetuned = int(self.agent.meta.extra.get("games_finetuned", 0))
-        self._baseline_state = copy.deepcopy(self.agent.net.state_dict())
+        # the *true* baseline for `reset_to_baseline`: the base checkpoint, not
+        # whatever fine-tuned state we happened to load. Only fall back to the
+        # loaded weights if the base isn't a distinct readable file.
+        self._baseline_is_true = False
+        self._baseline_state = self._load_baseline_state(agent)
         self._buffer: Optional[ReplayBuffer] = None
         self.state_dir = Path(state_dir) if state_dir else None
         if self.state_dir:
             (self.state_dir / "history").mkdir(parents=True, exist_ok=True)
+
+    def _load_baseline_state(self, agent: DQNAgent):
+        """The weights `reset_to_baseline` restores. Prefer the base checkpoint
+        (`source_path`) so a restart after a kept fine-tune still resets to the
+        real baseline, not the fine-tuned net."""
+        src = self.source_path
+        if src and Path(src).is_file():
+            try:
+                base = DQNAgent.from_checkpoint(src, device=str(agent.device))
+                self._baseline_is_true = True
+                return copy.deepcopy(base.net.state_dict())
+            except Exception:  # pragma: no cover - corrupt/mismatched base
+                pass
+        self._baseline_is_true = False
+        return copy.deepcopy(agent.net.state_dict())
 
     # -- construction ------------------------------------------------------
     @classmethod
@@ -524,6 +546,8 @@ class OthelloBot:
             self.version += 1
             self.games_finetuned += 1
             self.agent.meta.extra["games_finetuned"] = self.games_finetuned
+            self.agent.meta.extra["version"] = self.version
+            self.agent.meta.extra["parent"] = self.parent
             self._save_version()
 
         return FineTuneReport(
@@ -627,10 +651,14 @@ class OthelloBot:
 
     # -- persistence ---------------------------------------------------
     def _save_version(self) -> None:
+        """Persist the fine-tuned scratch model to `state_dir` (never to
+        `models/` or `checkpoints/production/` — promotion is script-only)."""
         if not self.state_dir:
             return
-        self.agent.save(self.state_dir / "current.pt")
-        self.agent.save(self.state_dir / "history" / f"v{self.version:04d}.pt")
+        extra = {"version": self.version, "parent": self.parent,
+                 "base_checkpoint": self.source_path}
+        self.agent.save(self.state_dir / "current.pt", **extra)
+        self.agent.save(self.state_dir / "history" / f"v{self.version:04d}.pt", **extra)
         (self.state_dir / "info.json").write_text(json.dumps(self.info(), indent=2))
 
     def reset_to_baseline(self) -> None:
@@ -639,7 +667,10 @@ class OthelloBot:
             self.agent.net.eval()
             self.version = 0
             self.games_finetuned = 0
+            self.parent = None
             self.agent.meta.extra["games_finetuned"] = 0
+            self.agent.meta.extra.pop("version", None)
+            self.agent.meta.extra.pop("parent", None)
             self._buffer = None
             if self.state_dir:
                 self._save_version()
@@ -650,8 +681,10 @@ class OthelloBot:
         return {
             "name": self.agent.name,
             "version": self.version,
+            "parent": self.parent,
             "games_finetuned": self.games_finetuned,
             "source": self.source_path,
+            "baseline": "base-checkpoint" if self._baseline_is_true else "loaded-state",
             "params": int(n_params),
             "network": {"channels": nc.channels, "blocks": nc.blocks, "hidden": nc.hidden},
             "train_env_steps": int(self.agent.meta.env_steps),

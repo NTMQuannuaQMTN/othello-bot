@@ -18,4 +18,16 @@ Strength at export (100 games/opponent, random openings):
 | Heuristic | 0.36 |
 
 Load it with `DQNAgent.from_checkpoint(...)` or `OthelloBot.load(...)`.
-Fine-tuning through the web app writes new versions to `webapp_state/`, never here.
+
+## Production model & registry
+
+The **active** production model is whatever [`../checkpoints/registry.json`](../checkpoints/registry.json)
+points at (`scripts/serve.py` loads it from there). Promotion history is in
+[`MODELS.md`](MODELS.md); the full lifecycle — train → resume → evaluate →
+promote → serve — is in [`../docs/training-and-models.md`](../docs/training-and-models.md).
+
+- `checkpoints/production/{best,latest}.pt` and `checkpoints/initial/v000_initial.pt`
+  are committed; `checkpoints/experiments/*.pt` are local training outputs.
+- Only `scripts/promote_model.py` writes to `checkpoints/production/` or the registry.
+- Fine-tuning through the web app writes a **scratch** model to `webapp_state/`,
+  never here and never to production.

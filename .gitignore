@@ -39,5 +39,15 @@ experiments/**
 !experiments/**/*.png
 experiments/**/*.log
 experiments/_*.log
+# Checkpoint tree: commit the registry + the initial & production checkpoints;
+# training / candidate outputs in experiments/ stay local.
 checkpoints/*
 !checkpoints/.gitkeep
+!checkpoints/registry.json
+!checkpoints/initial/
+!checkpoints/initial/*.pt
+!checkpoints/production/
+!checkpoints/production/*.pt
+!checkpoints/experiments/
+checkpoints/experiments/*
+!checkpoints/experiments/.gitkeep
