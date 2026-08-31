@@ -113,6 +113,26 @@ def test_games_are_recorded_and_finetune_all(tmp_path):
         httpd.shutdown()
 
 
+def test_explicit_save_game_and_dedup(tmp_path):
+    from othello_rl.webapp.server import serve as _serve
+    agent = DQNAgent(NetworkConfig(channels=8, blocks=2, hidden=16), seed=2)
+    bot = OthelloBot(agent, state_dir=str(tmp_path))
+    httpd = _serve(bot, port=8914)
+    th = threading.Thread(target=httpd.serve_forever, daemon=True)
+    th.start()
+    base = "http://127.0.0.1:8914"
+    try:
+        r1 = _call(base, "/api/games", {"transcript": "f5d6c3d3c4f4"})
+        assert r1["saved"] is True and r1["count"] == 1
+        r2 = _call(base, "/api/games", {"transcript": "f5d6c3d3c4f4"})   # same line
+        assert r2["saved"] is False and r2["reason"] == "already saved"
+        assert _call(base, "/api/games")["count"] == 1
+        rec = json.loads((tmp_path / "games.jsonl").read_text().splitlines()[0])
+        assert rec["winner"] in ("black", "white", "draw") and len(rec["moves"]) == 6
+    finally:
+        httpd.shutdown()
+
+
 def test_index_serves_html(server):
     # serves web/dist/index.html when the React app is built, otherwise a
     # fallback info page — either way it's HTML with a mounting point.

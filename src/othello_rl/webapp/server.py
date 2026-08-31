@@ -70,31 +70,50 @@ class AppState:
             for g in self.load_games():
                 self._seen.add(tuple(g.get("moves", [])))
 
+    def _append_game(self, moves, human_color="black", learn_color=None) -> dict:
+        """Append one game to the durable dataset, deduplicated by move sequence.
+        Returns ``{saved: bool, count: int, reason?: str}``."""
+        if not self.games_path:
+            return {"saved": False, "count": 0, "reason": "no dataset configured"}
+        moves = [int(a) for a in moves]
+        if not moves:
+            return {"saved": False, "count": len(self.load_games()), "reason": "empty game"}
+        sig = tuple(moves)
+        if sig in self._seen:
+            return {"saved": False, "count": len(self.load_games()), "reason": "already saved"}
+        # replay to record the result
+        board = self.session.board.__class__.initial()
+        for a in moves:
+            mv = None if a == 64 or not board.legal_moves() else divmod(a, 8)
+            board = board.apply(mv)
+        b, w = board.scores()
+        self._seen.add(sig)
+        rec = {
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "human_color": human_color,
+            "moves": moves,
+            "winner": ("black" if board.winner() == 1
+                       else "white" if board.winner() == -1 else "draw"),
+            "score": {"black": b, "white": w},
+            "bot_version": self.bot.version,
+        }
+        if learn_color:
+            rec["learn_color"] = learn_color
+        self.games_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.games_path.open("a") as fh:
+            fh.write(json.dumps(rec) + "\n")
+        return {"saved": True, "count": len(self.load_games())}
+
     def record_if_finished(self) -> None:
-        """Append the finished game to the dataset once (skipping duplicates)."""
+        """Auto-append the current session's game once it's over."""
         if not self.games_path or self._recorded:
             return
         st = self.session
         if not st.board.is_terminal() or len(st.history) == 0:
             return
         self._recorded = True
-        sig = tuple(st.history)
-        if sig in self._seen:
-            return
-        self._seen.add(sig)
-        b, w = st.board.scores()
-        rec = {
-            "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "human_color": "black" if st.human_color == 1 else "white",
-            "moves": list(st.history),
-            "winner": ("black" if st.board.winner() == 1
-                       else "white" if st.board.winner() == -1 else "draw"),
-            "score": {"black": b, "white": w},
-            "bot_version": self.bot.version,
-        }
-        self.games_path.parent.mkdir(parents=True, exist_ok=True)
-        with self.games_path.open("a") as fh:
-            fh.write(json.dumps(rec) + "\n")
+        self._append_game(list(st.history),
+                          human_color="black" if st.human_color == 1 else "white")
 
     def load_games(self) -> list:
         if not self.games_path or not self.games_path.is_file():
@@ -156,6 +175,19 @@ def make_handler(app: AppState):
         games = app.load_games()
         return {"count": len(games),
                 "path": str(app.games_path) if app.games_path else None}
+
+    @route("POST /api/games")
+    def _save_game(body):
+        """Save an explicit game to the dataset (the Play tab also auto-saves).
+        Body: ``{moves|transcript|history_actions, human_color?, learn_color?}``."""
+        if body.get("moves") or body.get("transcript") or body.get("history_actions"):
+            moves = parse_game(body)
+        else:
+            moves = list(app.session.state()["history_actions"])
+        res = app._append_game(moves, human_color=body.get("human_color", "black"),
+                               learn_color=body.get("learn_color"))
+        res["path"] = str(app.games_path) if app.games_path else None
+        return res
 
     @route("POST /api/finetune_all")
     def _finetune_all(_):

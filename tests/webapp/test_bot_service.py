@@ -6,6 +6,7 @@ import pytest
 from othello_rl.environment.board import BLACK, WHITE, Board
 from othello_rl.rl.agent import DQNAgent, NetworkConfig
 from othello_rl.webapp.bot_service import (
+    _TAKES_CORNER_REGRET,
     FineTuneConfig,
     OthelloBot,
     classify_drop,
@@ -53,7 +54,9 @@ def test_evaluate_position_shapes(bot):
     ev = bot.evaluate_position(Board.initial())
     assert 0.0 <= ev["winprob_black"] <= 1.0
     assert len(ev["moves"]) == 4
-    assert ev["moves"] == sorted(ev["moves"], key=lambda m: -m["value"])
+    # ranked by the corner-aware blended score, not raw Q
+    assert ev["moves"] == sorted(ev["moves"], key=lambda m: -m["score"])
+    assert all("gives_corner" in m for m in ev["moves"])
     # terminal
     from tests.environment.conftest import make_board
     term = Board(make_board(["O" * 8] + ["." * 8] * 7), BLACK)
@@ -83,7 +86,7 @@ def test_analyse_line_navigation_payload(bot):
     assert p0["turn"] == "black" and not p0["terminal"]
     assert sorted(p0["legal_actions"]) == [19, 26, 37, 44]
     assert len(p0["eval"]["moves"]) == 4
-    assert p0["eval"]["moves"] == sorted(p0["eval"]["moves"], key=lambda m: -m["value"])
+    assert p0["eval"]["moves"] == sorted(p0["eval"]["moves"], key=lambda m: -m["score"])
 
     acts = parse_game("c4c3f5b4b3")
     d = bot.analyse_line(acts)
@@ -149,6 +152,24 @@ def test_analyse_flags_a_clear_mistake(bot):
     assert xsquare["regret"] > corner["regret"]
     _order = ["Best", "Excellent", "Good", "Inaccuracy", "Mistake", "Blunder"]
     assert _order.index(xsquare["label"]) > _order.index(corner["label"])
+    # taking the corner is flagged and graded well (Best/Excellent), never worse
+    assert corner["takes_corner"]
+    assert corner["label"] in ("Best", "Excellent")
+    assert corner["regret"] <= _TAKES_CORNER_REGRET + 1e-9
+
+
+def test_corner_flags_detect_give_and_take():
+    from tests.environment.conftest import make_board
+    agent = DQNAgent(NetworkConfig(channels=8, blocks=2, hidden=16), seed=0)
+    b = OthelloBot(agent)
+    b0 = make_board([".OX.....", ".O......", "..X.....", "...OX...",
+                     "...XO...", "........", "........", "........"])
+    st = Board(b0, BLACK)
+    assert b.grade_move(st, 0)["takes_corner"] is True
+    # a non-corner developing move takes/gives no corner here
+    dev = next(r * 8 + c for r, c in st.legal_moves() if (r, c) != (0, 0))
+    fl = b.grade_move(st, dev)
+    assert fl["takes_corner"] is False
 
 
 def test_finetune_from_game_runs_and_guardrails(bot):

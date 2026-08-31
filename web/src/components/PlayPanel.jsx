@@ -243,12 +243,14 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame }) {
               )}
             </div>
             <p className="hint">
-              Every finished game is saved to <code>webapp_state/games.jsonl</code>
-              (also usable for offline training — see <code>scripts/finetune_from_games.py</code>).
-              A fine-tune reinforces good moves, penalises blunders, runs a short training
-              pass, and keeps the update only if the bot doesn't get weaker vs a random
-              opponent. <b>Whole game</b> = both sides' moves; <b>bot's moves</b> = just
-              its own play.
+              <b>Saved to the dataset automatically</b> — {savedGames || "…"} game
+              {savedGames === 1 ? "" : "s"} in <code>data/games.jsonl</code>. Play more,
+              then <b>Learn from all N saved games</b> here or run
+              {" "}<code>scripts/finetune_from_games.py</code> offline to train on the
+              batch. A fine-tune reinforces good moves, penalises corner-losing blunders,
+              runs a short training pass, and keeps the update only if the bot doesn't get
+              weaker vs a random opponent. <b>Whole game</b> = both sides' moves;
+              {" "}<b>bot's moves</b> = just its own play.
             </p>
             <FineTuneResult report={ft.report} error={ft.error} />
           </div>

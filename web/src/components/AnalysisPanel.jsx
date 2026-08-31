@@ -17,6 +17,16 @@ export default function AnalysisPanel({ loadLine, onBotChanged }) {
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
   const [ft, setFt] = useState({ report: null, error: null, running: null });
+  const [saved, setSaved] = useState(null);
+
+  async function saveGame() {
+    try {
+      const r = await api("/games", { moves: line });
+      setSaved(r.saved ? `saved · ${r.count} games` : `${r.reason} · ${r.count} games`);
+    } catch (e) {
+      setSaved(e.message);
+    }
+  }
 
   async function learnFrom(color) {
     setFt({ report: null, error: null, running: color });
@@ -43,7 +53,7 @@ export default function AnalysisPanel({ loadLine, onBotChanged }) {
     }
   }, []);
 
-  useEffect(() => { analyse(line); }, [line, analyse]);
+  useEffect(() => { analyse(line); setSaved(null); }, [line, analyse]);
 
   // deep link: ?analyse=<transcript>  (one-time, on mount)
   useEffect(() => {
@@ -208,6 +218,9 @@ export default function AnalysisPanel({ loadLine, onBotChanged }) {
         {line.length > 3 && (
           <div className="learn-from">
             <span className="alt">Teach the bot this game:</span>
+            <button disabled={!!ft.running} onClick={saveGame}>
+              {saved ? saved : "Save to dataset"}
+            </button>
             <button className="primary" disabled={!!ft.running} onClick={() => learnFrom("both")}>
               {ft.running === "both" ? "learning…" : "Learn the whole game"}
             </button>
@@ -225,12 +238,12 @@ export default function AnalysisPanel({ loadLine, onBotChanged }) {
 
         <MoveList
           items={data.plies.map((p) => {
+            // always show the best move that was available at that ply
             let note = "";
-            if (p.label !== "Best" && p.label !== "Excellent") {
-              const s = p.best_san !== p.played_san ? p.best_san
-                : p.coach_best_san !== p.played_san ? p.coach_best_san : null;
-              if (s) note = `try ${s} · −${Math.round(p.drop * 100)}`;
-            }
+            if (p.best_san === p.played_san) note = "✓ best";
+            else if (p.label === "Best" || p.label === "Excellent")
+              note = `best ${p.best_san}`;
+            else note = `best ${p.best_san} · −${Math.round(p.drop * 100)}`;
             return {
               n: p.ply + 1, side: p.side, san: p.played_san, note,
               right: p.glyph || p.label, rightClass: "label " + p.label,

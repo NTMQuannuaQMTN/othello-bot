@@ -71,6 +71,19 @@ _BOT_WEIGHT = 0.5
 _COACH_WEIGHT = 0.5
 _COACH_SCALE = 18.0  # heuristic-value units -> tanh -> [0, 1)
 
+#: corners dominate Othello — a move that hands one over is (almost) always a
+#: blunder, and taking one is (almost) always fine. These feed both the move
+#: grading and the "bot likes" ranking so the two never disagree.
+_CORNER_RC = frozenset({(0, 0), (0, 7), (7, 0), (7, 7)})
+_CORNER_ACTIONS = frozenset(r * 8 + c for (r, c) in _CORNER_RC)
+_GIVES_CORNER_REGRET = 0.45    # >= Blunder threshold (0.38)
+_TAKES_CORNER_REGRET = 0.02    # <= Best threshold (0.03)
+_CORNER_RANK_PENALTY = 0.60    # subtracted from a move's win-prob when it gives a corner
+_CORNER_RANK_BONUS = 0.15      # added when it takes one
+#: a move is a Blunder if the mover was fine (> this) and is now losing badly (< the next)
+_BIGLOSS_BEFORE = 0.42
+_BIGLOSS_AFTER = 0.24
+
 
 def _winprob(value: float) -> float:
     """Map an action/return value in ~[-1, 1] to a win probability in [0, 1]."""
@@ -214,12 +227,55 @@ class OthelloBot:
             out[r * 8 + c] = float(np.clip(v, -5e4, 5e4))
         return out
 
+    def _corner_flags(self, board: Board, action: int) -> Tuple[bool, bool]:
+        """``(takes_corner, gives_corner)`` for ``action``.
+
+        *gives_corner* = after this move the opponent has a legal move straight
+        into a corner (and the move itself isn't a corner) — the practical
+        signature of an X/C-square blunder.
+        """
+        if action == PASS_ACTION or action not in range(64):
+            return False, False
+        takes = action in _CORNER_ACTIONS
+        try:
+            child = board.apply(action_to_rc(action))
+        except Exception:  # pragma: no cover - illegal, handled upstream
+            return takes, False
+        gives = False
+        if not takes and not child.is_terminal() and child.player != board.player:
+            opp_legal = {r * 8 + c for (r, c) in child.legal_moves()}
+            gives = bool(opp_legal & _CORNER_ACTIONS)
+        return takes, gives
+
+    def _ranked_moves(self, board: Board, q: np.ndarray, legal) -> List[int]:
+        """Legal moves ordered by a corner-aware blend of the bot's win-prob, so
+        the top suggestion is never a move that immediately hands over a corner."""
+        def key(a: int) -> float:
+            wp = _winprob(float(q[a]))
+            takes, gives = self._corner_flags(board, int(a))
+            return wp + (_CORNER_RANK_BONUS if takes else 0.0) \
+                - (_CORNER_RANK_PENALTY if gives else 0.0)
+        return sorted((int(a) for a in legal), key=key, reverse=True)
+
+    def _mover_winprob(self, board: Board) -> float:
+        """Blended win-prob for the side to move (0..1), for big-loss detection."""
+        if board.is_terminal():
+            w = board.winner()
+            if w == 0:
+                return 0.5
+            return 1.0 if w == board.player else 0.0
+        eb = _eval_black(self, board)
+        return eb if board.player == BLACK else 1.0 - eb
+
     def grade_move(self, board: Board, played: int) -> dict:
-        """Grade one move: bot win-prob regret + positional regret -> label."""
+        """Grade one move: bot win-prob regret + positional regret + a corner /
+        big-loss override -> Lichess-style label."""
         q, mask = self._q_values(board)
         legal = np.nonzero(mask)[0]
-        q_best = int(max(legal, key=lambda x: q[x]))
-        bot_drop = max(0.0, _winprob(float(q[q_best])) - _winprob(float(q[played])))
+        played = int(played)
+        ranked = self._ranked_moves(board, q, legal)
+        best = ranked[0]
+        bot_drop = max(0.0, _winprob(float(q[best])) - _winprob(float(q[played])))
 
         conts = self._coach_conts(board)
         if played in conts and conts:
@@ -227,13 +283,41 @@ class OthelloBot:
             coach_raw = conts[coach_best] - conts[played]
             coach_drop = float(np.tanh(max(0.0, coach_raw) / _COACH_SCALE))
         else:
-            coach_best, coach_drop = q_best, 0.0
+            coach_best, coach_drop = best, 0.0
 
         regret = _BOT_WEIGHT * bot_drop + _COACH_WEIGHT * coach_drop
+
+        takes_c, gives_c = self._corner_flags(board, played)
+        big_loss = False
+        if not gives_c:
+            try:
+                before = self._mover_winprob(board)
+                after = self._mover_winprob(board.apply(
+                    None if played == PASS_ACTION else action_to_rc(played)))
+                big_loss = before > _BIGLOSS_BEFORE and after < _BIGLOSS_AFTER
+            except Exception:  # pragma: no cover
+                pass
+        if gives_c:
+            regret = max(regret, _GIVES_CORNER_REGRET)
+        elif takes_c:
+            regret = min(regret, _TAKES_CORNER_REGRET)
+        if big_loss:
+            regret = max(regret, _GIVES_CORNER_REGRET + 0.05)
+
         label, glyph = classify_drop(regret)
+        # "Best" is reserved for the move that really is best — bot's top pick,
+        # the coach agrees, and it doesn't concede a corner. Otherwise it's at
+        # most "Excellent"; a move that's neither side's pick is at most "Good".
+        really_best = played == best and coach_drop < 0.02 and not gives_c and not big_loss
+        if label == "Best" and not really_best:
+            label, glyph = "Excellent", ""
+        if label in ("Best", "Excellent") and played != best and played != int(coach_best):
+            label, glyph = "Good", ""
+
         return {
             "q": q, "mask": mask, "legal": legal,
-            "bot_best": q_best, "coach_best": int(coach_best),
+            "bot_best": best, "coach_best": int(coach_best),
+            "takes_corner": takes_c, "gives_corner": gives_c, "big_loss": big_loss,
             "bot_drop": bot_drop, "coach_drop": coach_drop, "regret": regret,
             "label": label, "glyph": glyph,
         }
@@ -249,16 +333,24 @@ class OthelloBot:
                         "winprob_black": wp_black, "winprob_stm": None, "moves": []}
             q, mask = self._q_values(board)
             legal = np.nonzero(mask)[0]
-            ranked = sorted(legal, key=lambda a: -q[a])
+            ranked = self._ranked_moves(board, q, legal)  # corner-aware order
             v = float(q[ranked[0]])
             wp_stm = _winprob(v)
             wp_black = _eval_black(self, board)  # blended, for display
-            moves = [{
-                "action": int(a),
-                "san": _san(a),
-                "value": float(q[a]),
-                "winprob": _winprob(float(q[a])),
-            } for a in ranked]
+            moves = []
+            for a in ranked:
+                takes_c, gives_c = self._corner_flags(board, a)
+                wp = _winprob(float(q[a]))
+                moves.append({
+                    "action": int(a),
+                    "san": _san(a),
+                    "value": float(q[a]),
+                    "winprob": wp,
+                    "score": wp + (_CORNER_RANK_BONUS if takes_c else 0.0)
+                             - (_CORNER_RANK_PENALTY if gives_c else 0.0),
+                    "gives_corner": gives_c,
+                    "takes_corner": takes_c,
+                })
             return {"terminal": False, "winprob_black": wp_black,
                     "winprob_stm": wp_stm, "moves": moves}
 
@@ -277,7 +369,7 @@ class OthelloBot:
                     continue
                 g = self.grade_move(state, a)
                 q = g["q"]
-                ranked = sorted(g["legal"], key=lambda x: -q[x])
+                ranked = self._ranked_moves(state, q, g["legal"])
                 best = g["bot_best"]
                 best_v, played_v = float(q[best]), float(q[a])
                 best_wp, played_wp = _winprob(best_v), _winprob(played_v)
@@ -344,7 +436,7 @@ class OthelloBot:
                     continue
                 g = self.grade_move(state, a)
                 q = g["q"]
-                ranked = sorted(g["legal"], key=lambda x: -q[x])
+                ranked = self._ranked_moves(state, q, g["legal"])
                 best = g["bot_best"]
 
                 side = _side(state.player)
@@ -491,6 +583,7 @@ class OthelloBot:
                 continue
             g = self.grade_move(s, a)
             label, best, coach_a = g["label"], g["bot_best"], g["coach_best"]
+            gives_c, takes_c = g["gives_corner"], g["takes_corner"]
 
             j = i + 1
             while j < len(states) and not states[j].is_terminal() and states[j].player != learn_side:
@@ -505,10 +598,21 @@ class OthelloBot:
             trans.append((obs, a, r, next_obs, done, next_mask))
 
             penalised = reinforced = False
-            if label in ("Mistake", "Blunder") and coach_a != a:
+            if gives_c and coach_a != a:
+                # handing over a corner: hard-penalise it, reward the safe move
+                trans.append((obs, a, -cfg.blunder_penalty, next_obs, True, next_mask))
                 trans.append((obs, a, -cfg.blunder_penalty, next_obs, True, next_mask))
                 trans.append((obs, coach_a, cfg.great_bonus, next_obs, True, next_mask))
                 penalised, n_pen = True, n_pen + 1
+            elif label in ("Mistake", "Blunder") and coach_a != a:
+                trans.append((obs, a, -cfg.blunder_penalty, next_obs, True, next_mask))
+                trans.append((obs, coach_a, cfg.great_bonus, next_obs, True, next_mask))
+                penalised, n_pen = True, n_pen + 1
+            elif takes_c:
+                # taking a corner is (almost) always right — reinforce it
+                trans.append((obs, a, max(cfg.great_bonus, r if done else 0.0),
+                              next_obs, True, next_mask))
+                reinforced, n_reinf = True, n_reinf + 1
             elif label in ("Best", "Excellent") and a == best:
                 bonus = max(cfg.great_bonus, r if done else 0.0)
                 trans.append((obs, a, bonus, next_obs, True, next_mask))

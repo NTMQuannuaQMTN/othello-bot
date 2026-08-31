@@ -48,9 +48,10 @@ An **interactive analysis board** — you don't type moves, you play them:
 - legal moves are shown as dots; click a square to add it to the line;
 - **`bot likes: c4 70% · f5 70% · …`** lists the bot's top moves for the current
   position (click one to play it);
-- the bot's **best move is always outlined with a dashed box** (with a legend
-  under the board); the move you actually played is outlined in blue and graded
-  (Best / Excellent / Good / Inaccuracy `?!` / Mistake `?` / Blunder `??`);
+- the **best move you can play now is always outlined with a dashed box** (and
+  named in the legend); the move you actually played is outlined in blue and
+  graded (Best / Excellent / Good / Inaccuracy `?!` / Mistake `?` / Blunder `??`).
+  The move list shows the best alternative for **every** ply, not just mistakes;
 - navigate with ⏮ ◀ ▶ ⏭, the arrow keys, or by clicking the eval graph / move
   list; **take back** (or Backspace) pops the last move; playing a move while
   viewing an earlier position replaces the continuation from there;
@@ -58,12 +59,17 @@ An **interactive analysis board** — you don't type moves, you play them:
   move list (`f5 d6 c3 …`) or run-together transcript (`f5d6c3…`);
 - a `?analyse=<transcript>` URL opens straight into that line.
 
-The **eval graph** is the bot's win-probability for Black across the line (see the
-note below on why it's blended with a positional score).
+The **eval bar** and **eval graph** are the bot's win-probability for **Black**
+across the line (blended with a positional score — see the note below). The bar
+fills from the bottom with Black's share, so the colour that's ahead is the
+colour that fills the bar.
 
 Below the graph, a **strategy read-out** per side: move-quality counts +
 `accuracy` (fraction of Good-or-better moves), corners / X-squares / edge moves
 played, average mobility, disc count.
+
+**Save to dataset** appends the current line to `data/games.jsonl` so you can
+batch-train on many games later (the Play tab auto-saves every finished game).
 
 **Teach the bot this game** — *Learn the whole game* (both sides) / *⚫ Black
 only* / *⚪ White only*. `learn_color` = `"both"` / `"black"` / `"white"`; each
@@ -76,17 +82,26 @@ from all N saved games* (`scripts/finetune_from_games.py --learn both` offline).
 ### How a move is graded
 
 The DQN's raw action-values are only weakly separated, so a move's **regret** is a
-blend of two signals:
+blend of two signals plus a corner / big-loss override:
 
 ```
 regret = 0.5 · (win-prob the bot thinks the move gives up vs its own best move)
        + 0.5 · tanh( positional value lost vs a 1-ply corner/mobility/edge check / 18 )
+
+then:  gives a corner   -> regret ≥ 0.45  (Blunder)
+       takes a corner   -> regret ≤ 0.02  (Best/Excellent)
+       leaves the mover losing badly (win-prob > 0.42 → < 0.24)  -> regret ≥ 0.50
 ```
 
-The 1-ply positional check is the same heuristic used by `HeuristicAgent`; it
-catches tactical errors (e.g. giving up a corner) that the small DQN is blind to.
-`regret` (0–1) is mapped to a label by the table in
-`webapp/bot_service.py::_CLASS_TABLE`.
+"Gives a corner" = after the move the opponent has a legal move straight into a
+corner. `regret` (0–1) is mapped to a label by `_CLASS_TABLE` in
+`webapp/bot_service.py`. **Best** is reserved for a move that is the bot's own top
+pick, the 1-ply check agrees, and it concedes no corner; a move that is neither
+pick is capped at **Good**.
+
+The bot's move ranking (the dashed best move, the "bot likes" list, `GET /api/eval`
+`moves[].score`) uses the same corner-aware blend, so the top suggestion is never a
+move that immediately hands over a corner.
 
 ## Fine-tuning the bot from a game
 
@@ -187,5 +202,6 @@ Commands: `genmove <transcript>`, `eval <transcript>`, `name`, `quit`.
 | `POST /api/analyse` | `{moves` \| `transcript` \| `history_actions}` | `positions[]`, `plies[]` (move grades), `eval_graph`, `summary`, `strategy` (per-side stats) |
 | `POST /api/finetune` | `{}` or `{moves, learn_color}` | fine-tune from a game, learning `learn_color`'s moves (default: the bot's side) |
 | `GET /api/games` | | `{count, path}` of saved games |
+| `POST /api/games` | `{moves` \| `transcript, human_color?, learn_color?}` | append a game to `data/games.jsonl` (dedup by move sequence) → `{saved, count, reason?}` |
 | `POST /api/finetune_all` | `{}` | fine-tune from every saved game at once |
 | `POST /api/bot/reset` | | restores baseline weights |

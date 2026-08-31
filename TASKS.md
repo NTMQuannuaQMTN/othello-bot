@@ -137,6 +137,12 @@ pass, and the full suite is green.
 - [x] Tests: bot_service, moves, HTTP API, SPA fallback, serve/CLI smoke
 - [x] Durable game dataset: `data/games.jsonl` (committed, append-only,
       cross-restart dedup by move sequence); `games_path` in `configs/webapp.yaml`
+- [x] Analysis polish: corner-aware move ranking (best/"bot likes" never concedes
+      a corner), grading override (give-corner→Blunder, take-corner→Best/Excellent,
+      big-loss→Blunder), "Best" reserved for the true best, per-ply best-move hint,
+      eval bar fills with the leading colour, move list scrolls itself not the page,
+      "Save to dataset" button + `POST /api/games`
+- [x] Fine-tune shaping: hard-penalise corner-losing moves, reinforce corner takes
 
 ## Phase 11 — Persistent model & checkpoint management
 
