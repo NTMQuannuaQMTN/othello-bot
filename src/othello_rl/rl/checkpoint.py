@@ -74,9 +74,14 @@ class Checkpoint:
     timestamp: Optional[str] = None
     version: Optional[str] = None
     parent: Optional[str] = None
+    net_kind: str = "dqn"                        # "dqn" | "policy_value"
+    pv_config: Optional[dict] = None            # set when net_kind == "policy_value"
     format: int = 2
 
-    def build_agent(self, device: str = "cpu") -> DQNAgent:
+    def build_agent(self, device: str = "cpu"):
+        if self.net_kind == "policy_value":
+            from .az_agent import PolicyValueAgent
+            return PolicyValueAgent.from_state(self.pv_config, self.state_dict, device=device)
         agent = DQNAgent(self.net_config, device=device)
         agent.net.load_state_dict(self.state_dict)
         agent.net.eval()
@@ -147,10 +152,15 @@ def load_checkpoint(path) -> Checkpoint:
     m = raw.get("meta", {}) or {}
     meta = AgentMeta(train_steps=m.get("train_steps", 0), env_steps=m.get("env_steps", 0),
                      episodes=m.get("episodes", 0), extra=dict(m.get("extra", {})))
+    net_kind = raw.get("net_kind", "dqn")
+    net_config = (NetworkConfig(**raw["net_config"]) if raw.get("net_config")
+                  else NetworkConfig())
     return Checkpoint(
-        net_config=NetworkConfig(**raw["net_config"]),
+        net_config=net_config,
         state_dict=raw["state_dict"],
         meta=meta,
+        net_kind=net_kind,
+        pv_config=raw.get("pv_config"),
         optimizer_state=raw.get("optimizer_state"),
         scheduler_state=raw.get("scheduler_state"),
         train_step=int(raw.get("train_step", meta.train_steps)),
@@ -166,6 +176,40 @@ def load_checkpoint(path) -> Checkpoint:
         parent=raw.get("parent", meta.extra.get("parent")),
         format=int(raw.get("format", 1)),
     )
+
+
+def load_agent(path, device: str = "cpu"):
+    """Load whatever kind of net a checkpoint holds as a playable ``Agent``
+    (``DQNAgent`` or ``PolicyValueAgent``)."""
+    return load_checkpoint(path).build_agent(device=device)
+
+
+def save_policy_value_checkpoint(path, net, pv_config, *, optimizer=None,
+                                 epoch: int = 0, train_config: Optional[dict] = None,
+                                 seed: Optional[int] = None, rng_state: Optional[dict] = None,
+                                 metrics: Optional[dict] = None, experiment: Optional[str] = None,
+                                 version: Optional[str] = None, parent: Optional[str] = None,
+                                 dataset_version: Optional[str] = None,
+                                 games_played: int = 0) -> Path:
+    """Write a ``net_kind: "policy_value"`` checkpoint (supervised pretraining)."""
+    from dataclasses import asdict as _asdict
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pv = pv_config if isinstance(pv_config, dict) else _asdict(pv_config)
+    torch.save({
+        "format": 2, "net_kind": "policy_value", "pv_config": pv,
+        "state_dict": net.state_dict(),
+        "meta": {"train_steps": int(epoch), "episodes": 0, "env_steps": 0,
+                 "extra": {"epoch": int(epoch), "dataset_version": dataset_version,
+                           "method": "supervised_pretrain", "version": version,
+                           "parent": parent}},
+        "optimizer_state": optimizer.state_dict() if optimizer is not None else None,
+        "train_step": int(epoch), "episode": 0, "games_played": int(games_played),
+        "train_config": train_config, "seed": seed, "rng_state": rng_state,
+        "experiment": experiment, "metrics": metrics, "timestamp": _now(),
+        "version": version, "parent": parent, "dataset_version": dataset_version,
+    }, path)
+    return path
 
 
 @dataclass

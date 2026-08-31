@@ -200,8 +200,16 @@ labeller, **not an oracle**.
       played move + outcome z + label, data_kind kept), `datasets/build.py`
       (strategies all / filtered / weighted; npz + manifest; leak assertion);
       `configs/dataset.yaml`, `scripts/build_dataset.py`; `tests/datasets/` (7)
-- [ ] 12.5 Policy(+value) net (`rl/az_network.py`) + supervised imitation
-      pretraining (`rl/supervised.py`, `scripts/pretrain.py`) — NOT RL
+- [x] 12.5 Policy(+value) net — `rl/az_network.py` (`PolicyValueNet`: shared torso
+      -> 65 policy logits + tanh value), `rl/az_agent.py` (`PolicyValueAgent`,
+      masked argmax, implements `Agent`), `rl/checkpoint.py` `net_kind` + `load_agent`
+      dispatch (+ `save_policy_value_checkpoint`), `rl/supervised.py`
+      (`SupervisedTrainer`: weighted CE policy + MSE value, per-epoch val loss +
+      move accuracy, `.resume`), `scripts/pretrain.py`, `configs/pretrain.yaml`,
+      `utils/experiment.py::log_experiment` -> `experiments/index.jsonl`.
+      Behaviour cloning, NOT RL. `tests/rl/test_supervised.py` (6): overfit tiny
+      set, val-only metrics, ckpt under experiments/ + roundtrip, resume restores
+      epoch+optimizer, agent always legal + plays, DQN ckpt still loads.
 - [ ] 12.6 Eval vs baselines + production + historical; config-driven promotion;
       `experiments/index.jsonl` tracking; `scripts/iterate.py` loop skeleton
 - [ ] (deferred) AZ-MCTS self-play — `docs/alphazero-plan.md`

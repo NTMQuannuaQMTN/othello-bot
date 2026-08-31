@@ -11,10 +11,11 @@ Phase 11: persistent model & checkpoint management.
 ## Current task
 Phase 12 — historical-game supervised pretraining pipeline (see
 `docs/historical-training.md`, plan in `.claude/plans/`). 12.1 ingest + 12.2
-validate + 12.3 analysis + 12.4 datasets done; 12.5 policy(+value) net +
-supervised imitation pretraining next. The 3–5 ply analysis is a heuristic
-labeller, not an oracle. NB: `Board.apply` auto-skips forced passes; pure-Python
-negamax @5 plies ≈ 4 positions/s/core (benchmark first, use `n_workers`).
+validate + 12.3 analysis + 12.4 datasets + 12.5 policy(+value) net & supervised
+imitation pretraining done; 12.6 eval/promote/iterate next. `PolicyValueNet` +
+DQN coexist behind `rl/checkpoint.py::load_agent`. The 3–5 ply analysis is a
+heuristic labeller, not an oracle. NB: `Board.apply` auto-skips forced passes;
+pure-Python negamax @5 plies ≈ 4 positions/s/core (benchmark first, `n_workers`).
 
 ## Model lifecycle (verified 2026-08-31)
 

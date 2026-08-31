@@ -120,8 +120,34 @@ POV, `weight (N,)`, `label`, `data_kind`, `game_idx`, `game_ids`) + `manifest.js
 (config, per-split counts, label/data-kind histograms, mean weight; copied to
 `experiments/<ts>_dataset_<version>/`). `<version>` = timestamp + config hash.
 
+## Supervised pretraining (`scripts/pretrain.py`)
+
+**This is imitation / behaviour cloning, NOT reinforcement learning.** The target
+is a fixed `(position → move)` mapping (weighted cross-entropy on the policy head)
+plus the game outcome `z` (MSE on the value head):
+
+```
+loss = weighted_CE(policy_logits, played_move) + value_loss_weight · MSE(value, z)
+```
+
+The network is a dedicated **`PolicyValueNet`** (`rl/az_network.py`): a shared conv
+torso → 65-way policy logits + a scalar tanh value. It is a *different model kind*
+from the DQN `SmallOthelloNet`; both coexist behind
+`rl/checkpoint.py::load_agent(path)`, which reads `net_kind` and returns a
+`DQNAgent` or a `PolicyValueAgent` (`rl/az_agent.py`, masked-argmax over the
+policy — plugs straight into `play_match` / `eval_bot.py` / `promote_model.py`).
+
+Each epoch reports **val loss** and **top-1 move accuracy** on the val split (a
+different set of games from train — see 12.4). `--resume <ckpt>` restores the
+epoch counter, optimizer and RNG. Output → `checkpoints/experiments/<v>_pretrain.pt`
+(`net_kind: policy_value`, `method: supervised_pretrain`, `dataset_version`,
+`parent`), an `experiments/<ts>_pretrain/` run dir, and one row in
+`experiments/index.jsonl`. It **never touches** `checkpoints/production/`.
+
+Loss numbers alone say nothing about strength — every candidate must still be
+evaluated by playing games (12.6).
+
 ## Later stages
 
-12.5 policy(+value) supervised pretraining, 12.6 evaluation / promotion / iterate
-loop — added as those phases land. The RL half of the loop (AZ-style MCTS
-self-play) is deferred to `docs/alphazero-plan.md`.
+12.6 evaluation / promotion / iterate loop — added as it lands. The RL half of the
+loop (AZ-style MCTS self-play) is deferred to `docs/alphazero-plan.md`.

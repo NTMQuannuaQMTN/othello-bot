@@ -30,6 +30,7 @@ venv/
 experiments/**
 !experiments/.gitkeep
 !experiments/RESULTS.md
+!experiments/index.jsonl
 !experiments/**/
 !experiments/**/report.md
 !experiments/**/summary.md

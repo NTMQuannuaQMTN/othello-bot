@@ -57,3 +57,27 @@ def write_metadata(run_dir: str | Path, config: Dict[str, Any],
     path = run_dir / "metadata.json"
     path.write_text(json.dumps(meta, indent=2, default=str))
     return path
+
+
+#: repo-level append-only experiment log — one JSON line per training / eval /
+#: promotion run, so experiment history survives even when run dirs are pruned.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+EXPERIMENT_INDEX = _REPO_ROOT / "experiments" / "index.jsonl"
+
+
+def log_experiment(row: Dict[str, Any], path: str | Path = EXPERIMENT_INDEX) -> Path:
+    """Append one experiment record to ``experiments/index.jsonl`` (committed)."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    entry = {"timestamp": datetime.now().isoformat(timespec="seconds"),
+             "git_commit": git_commit(), **row}
+    with path.open("a") as fh:
+        fh.write(json.dumps(entry, default=str) + "\n")
+    return path
+
+
+def read_experiments(path: str | Path = EXPERIMENT_INDEX) -> list:
+    path = Path(path)
+    if not path.is_file():
+        return []
+    return [json.loads(ln) for ln in path.read_text().splitlines() if ln.strip()]
