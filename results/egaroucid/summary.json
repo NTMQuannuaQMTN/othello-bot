@@ -47,6 +47,22 @@
       "mean_disc_diff": -57.8,
       "inference_ms_mean": 0.5810950394736683,
       "inference_ms_max": 2.488375000000431
+    },
+    {
+      "timestamp": "2026-08-31T22:33:40",
+      "file": "match_20260831_223340.json",
+      "model_version": "v001_curriculum_selfplay",
+      "checkpoint": "/Users/qnrj/Code/othello-bot/checkpoints/production/best.pt",
+      "egaroucid_version": "7.8.1 macOS ARM64 Generic (Clang)",
+      "level": 10,
+      "games": 10,
+      "rl_wins": 0,
+      "egaroucid_wins": 10,
+      "draws": 0,
+      "win_rate": 0.0,
+      "mean_disc_diff": -60.0,
+      "inference_ms_mean": 0.5001625733333191,
+      "inference_ms_max": 1.7919169999984774
     }
   ]
 }

@@ -1,15 +1,16 @@
 # Playing the RL bot against Egaroucid for Console
 
 `scripts/play_egaroucid.py` runs the **trained** Othello RL bot against a local
-**Egaroucid for Console** engine over GTP and records the games. It is an
-*evaluation-only* integration — it never trains, fine-tunes, promotes, or writes
-to `models/` / `checkpoints/`.
+**Egaroucid for Console** engine over GTP and records the games. By default it is
+pure evaluation — the model is never modified. With `--train` it *also*
+fine-tunes the model on the games it just played and writes the result as a
+**candidate** under `checkpoints/experiments/`; the production checkpoint and
+`checkpoints/registry.json` are still never touched (see
+[Learning from the match](#learning-from-the-match)).
 
 ## TL;DR — the command
 
-Run it **from the repo root** with the interpreter that has the deps
-(`/usr/bin/python3` on this machine — a bare `python3` may resolve to Xcode's,
-which has no torch):
+Run it **from the repo root** (or give the script an absolute path):
 
 ```bash
 cd /Users/qnrj/Code/othello-bot        # or use an absolute path to the script
@@ -38,7 +39,9 @@ under `~/Library/Python/3.9` are shared); if yours does not, use `/usr/bin/pytho
 Key flags: `--games N`, `--level 0-60` (Egaroucid strength, default 10),
 `--opening-plies K` (random opening plies for game diversity, default 4),
 `--threads`, `--nobook`, `--start-color black|white`, `--seed`, `--quiet`,
-`--out-dir`, `--no-save`, `--move-timeout`.
+`--out-dir`, `--no-save`, `--move-timeout`. Training: `--train`,
+`--train-loops N`, `--train-grad-steps`, `--train-lr`, `--train-guardrail-games`,
+`--train-out`.
 
 With `--checkpoint` omitted the bot is resolved from `checkpoints/registry.json`
 (the active production model — currently `v001_curriculum_selfplay`,
@@ -165,9 +168,51 @@ Othello Quest workflow / the expensive 3–5-ply analysis path used by the web
 app's *analysis* board. `play_egaroucid.py` uses only `OthelloBot.select_action`
 (a single masked forward pass), never that search.
 
+## Learning from the match
+
+`--train` fine-tunes the model on the games it just played, then writes the
+result as a candidate. It reuses the project's existing behaviour-cloning path
+(`OthelloBot.finetune_from_games`), nothing new:
+
+1. Each game teaches the bot **its own** side's moves (real placements only; the
+   replay re-inserts forced passes).
+2. DQN transitions carry the game outcome (a loss vs Egaroucid → −1) plus the
+   usual conservative shaping (hard-penalise conceding a corner, reinforce a
+   corner take / an unambiguous best move).
+3. One training pass on an **anchored** replay buffer (the bot's own play vs
+   Random/Greedy is mixed in so 10 games can't overwrite the policy).
+4. **Guardrail:** win rate vs Random is measured before and after; if it drops by
+   more than `guardrail_margin` (0.10) the update is **rolled back** and nothing
+   is written.
+
+```bash
+python3 scripts/play_egaroucid.py --games 10 --train
+python3 scripts/play_egaroucid.py --games 6 --train --train-loops 3   # play→learn→play→…
+```
+
+A kept update is saved to `checkpoints/experiments/egaroucid_ft_<stamp>.pt`
+(git-ignored, like every training candidate). It is **not** promoted — evaluate
+and promote it exactly like any other candidate:
+
+```bash
+python3 scripts/eval_bot.py     --checkpoint checkpoints/experiments/egaroucid_ft_<stamp>.pt --vs-production
+python3 scripts/promote_model.py checkpoints/experiments/egaroucid_ft_<stamp>.pt   # only if it passes
+```
+
+Example (10 games vs level 10, seed 20260831): fine-tune #1 — 90 reinforced /
+11 penalised, TD loss 0.077 → 0.052, win% vs Random 0.933 → 0.900 (within the
+guardrail) → kept. The match JSON gains a `"training"` block with the per-round
+`FineTuneReport`. Learning from 10 one-sided losses is not expected to close the
+gap to Egaroucid — it is exposed because the pipeline supports it and the
+guardrail makes it safe.
+
 ## What is guaranteed unchanged
 
-Model architecture, weights, training data, training config and the production
-checkpoint are untouched. Added: `src/othello_rl/eval_external/`,
-`scripts/play_egaroucid.py`, `tests/eval_external/`, `results/egaroucid/`, a
-`.gitignore` line for the engine folder, and this doc.
+Without `--train`, the model is untouched. **With** `--train` the in-memory model
+is fine-tuned and a candidate `.pt` is written under `checkpoints/experiments/` —
+but model **architecture**, the **training dataset**, the **training config**,
+`checkpoints/production/` and `checkpoints/registry.json` are never modified;
+promotion stays a deliberate, separate `scripts/promote_model.py` step. Added:
+`src/othello_rl/eval_external/`, `scripts/play_egaroucid.py`,
+`tests/eval_external/`, `results/egaroucid/`, `.gitignore` lines for the engine
+folder + `.DS_Store`, and this doc.

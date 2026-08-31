@@ -234,11 +234,18 @@ labeller, **not an oracle**.
       (registry-resolved, never a random net), prints version + checkpoint,
       one debug game or an N-game colour-alternating match; writes
       `results/egaroucid/match_*.json` + `summary.json`.
+- [x] `--train` (opt-in): fine-tune the model on the match games via the existing
+      `OthelloBot.finetune_from_games` (behaviour cloning + shaping + guardrail
+      rollback); `--train-loops N` for play→learn iteration; kept updates saved as
+      a **candidate** under `checkpoints/experiments/egaroucid_ft_*.pt` (git-ignored)
+      — production/registry untouched, promotion stays a separate script step.
+      `eval_external.match.{records_to_training_games,finetune_on_records}`.
 - [x] `docs/egaroucid-eval.md` (protocol, build command, the exact run command,
-      baseline result, the speed finding).
-- [x] `tests/eval_external/test_egaroucid_bridge.py` (18): coord round-trips,
+      baseline result, the speed finding, the `--train` flow).
+- [x] `tests/eval_external/test_egaroucid_bridge.py` (20): coord round-trips,
       GTP parser, fake-engine game loop (both colours), forced-pass logging,
-      illegal-RL-move abort, colour alternation, + a real-engine game when the
-      executable is present. Model/weights/training config unchanged.
+      illegal-RL-move abort, colour alternation, real-engine game when the
+      executable is present, `records_to_training_games`, `finetune_on_records`
+      (guardrail keep/rollback ⇔ weights move/restore).
       Baseline: v001_curriculum_selfplay 0/10 vs Egaroucid level 10
       (avg −60 discs); RL inference ~0.5 ms/move.

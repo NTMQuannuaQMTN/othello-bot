@@ -24,9 +24,17 @@ forward pass — no search). Results in `results/egaroucid/`.
   total for 10 games. The historical "5–6 min game" was the manual Othello Quest
   workflow / the web app's 3–5-ply *analysis* search — never the model, and that
   path is not used here.
-- Model architecture / weights / training data / config / production checkpoint
-  unchanged; only `eval_external/`, the script, `tests/eval_external/` (18) and
-  `results/egaroucid/` were added. Docs: `docs/egaroucid-eval.md`.
+- **`--train` (opt-in):** fine-tune the model on the match games via the existing
+  `OthelloBot.finetune_from_games` (behaviour cloning + shaping + guardrail
+  rollback). `--train-loops N` iterates play→learn. A kept update is written as a
+  **candidate** `checkpoints/experiments/egaroucid_ft_*.pt` (git-ignored);
+  `checkpoints/production/` + `registry.json` are never touched, promotion stays
+  `scripts/promote_model.py`. Example: fine-tune #1 kept, win% vs Random
+  0.933→0.900 (within guardrail). Learning from 10 losses doesn't dent Egaroucid.
+- Model architecture / training data / training config / production checkpoint /
+  registry unchanged; added `eval_external/`, the script, `tests/eval_external/`
+  (20) and `results/egaroucid/`. Engine folder + `.DS_Store` git-ignored. Docs:
+  `docs/egaroucid-eval.md`.
 
 ## Current task
 Phase 12 — historical-game supervised pretraining pipeline (see
@@ -144,9 +152,9 @@ the empirical training results in `experiments/` stand.
 All results: `experiments/RESULTS.md`.
 
 ## Test status
-`python3 -m pytest` → **248 passed** (~140 s). +18 this session for the
-Egaroucid GTP bridge (`tests/eval_external/`, incl. a real-engine game that
-skips when the executable is absent).
+`python3 -m pytest` → **250 passed** (~150 s). +20 this session for the
+Egaroucid GTP bridge + `--train` (`tests/eval_external/`, incl. a real-engine
+game that skips when the executable is absent).
 
 Extra verification run this pass (ad-hoc scripts, not in the suite): all-agent-pair
 integration sweep with per-ply invariants; dihedral symmetry; RL-env reward-sign

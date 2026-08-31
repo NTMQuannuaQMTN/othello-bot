@@ -45,7 +45,7 @@ python3 scripts/eval_bot.py  --checkpoint models/othello_bot_v1.pt  # vs Random/
 python3 scripts/track.py     --run experiments/<run_dir>     # strength curves over checkpoints
 python3 scripts/play.py      --checkpoint models/othello_bot_v1.pt   # terminal game
 python3 scripts/serve.py     --config configs/webapp.yaml    # web app -> http://127.0.0.1:8000
-python3 scripts/play_egaroucid.py --games 10                 # production model vs local Egaroucid (GTP); see docs/egaroucid-eval.md
+python3 scripts/play_egaroucid.py --games 10                 # production model vs local Egaroucid (GTP); add --train to fine-tune on the games. see docs/egaroucid-eval.md
 ```
 
 ## Web app

@@ -270,6 +270,49 @@ def test_run_match_alternates_colours_and_totals_add_up():
 
 
 # --------------------------------------------------------------------------- #
+# learning from the match
+# --------------------------------------------------------------------------- #
+def test_records_to_training_games_uses_real_moves_and_own_colour():
+    from othello_rl.eval_external.match import records_to_training_games
+
+    recs = run_match(_bot(), FakeEngine(GreedyAgent()), games=2,
+                     opening_plies=2, seed=4, verbose=False).records
+    games = records_to_training_games(recs)
+    assert len(games) == 2
+    for g, r in zip(games, recs):
+        assert g["learn_color"] == r.rl_color               # learns the bot's own side
+        assert all(0 <= a < 64 for a in g["actions"])       # real placements only, no pass
+        assert g["actions"] == [m["action"] for m in r.moves if not m["pass"]]
+    # a record with an error is dropped
+    recs[0].error = "boom"
+    assert len(records_to_training_games(recs)) == 1
+
+
+def test_finetune_on_records_runs_and_respects_the_guardrail():
+    from othello_rl.rl.checkpoint import Registry
+    from othello_rl.webapp.bot_service import FineTuneConfig, OthelloBot
+    from othello_rl.eval_external.match import finetune_on_records
+
+    ft = FineTuneConfig(grad_steps=4, anchor_transitions=120, buffer_capacity=2000,
+                        guardrail_games=8)
+    bot = OthelloBot.load(str(Registry.load().active_checkpoint_path()), ft_config=ft)
+    before = [p.detach().clone() for p in bot.agent.net.parameters()]
+
+    recs = run_match(bot, FakeEngine(GreedyAgent()), games=2, opening_plies=2,
+                     seed=7, verbose=False).records
+    rep = finetune_on_records(bot, recs, grad_steps=4)
+
+    assert rep.grad_steps == 4
+    assert 0.0 <= rep.winrate_vs_random_before <= 1.0
+    assert isinstance(rep.rolled_back, bool)
+    import torch
+    after = list(bot.agent.net.parameters())
+    changed = any(not torch.equal(b, a) for b, a in zip(before, after))
+    # rolled back -> weights restored exactly; kept -> weights moved
+    assert changed == (not rep.rolled_back)
+
+
+# --------------------------------------------------------------------------- #
 # optional: a real game against a built Egaroucid, if one is on disk
 # --------------------------------------------------------------------------- #
 def test_real_egaroucid_one_game_if_available():

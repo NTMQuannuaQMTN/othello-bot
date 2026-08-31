@@ -14,11 +14,21 @@ A 10-game mini-match, colours alternating, results saved under results/egaroucid
 Pin a checkpoint / engine strength / executable::
 
     python3 scripts/play_egaroucid.py --checkpoint checkpoints/production/best.pt \
-        --games 10 --level 15 --egaroucid ~/Downloads/Egaroucid-console_v7.8.1/bin/Egaroucid_for_Console.out
+        --games 10 --level 15 --egaroucid Egaroucid-console_v7.8.1/bin/Egaroucid_for_Console.out
 
-The RL model is loaded **once** at start-up and kept in memory; it is never
-retrained or modified here.  Our own engine referees legality / passing /
-termination (PROJECT_SPEC); Egaroucid is asked only for its own moves.
+Learn from the match (opt-in)::
+
+    python3 scripts/play_egaroucid.py --games 10 --train
+    python3 scripts/play_egaroucid.py --games 6 --train --train-loops 3   # play->learn->play->…
+
+The RL model is loaded **once** at start-up and kept in memory.  Our own engine
+referees legality / passing / termination (PROJECT_SPEC); Egaroucid is asked only
+for its own moves.  Without ``--train`` the model is never modified.  With
+``--train`` it is fine-tuned on the games it just played — behaviour cloning +
+shaping + the project's guardrail rollback — and the result is written as a
+**candidate** under ``checkpoints/experiments/``.  The production checkpoint and
+``checkpoints/registry.json`` are never touched; promote a candidate separately
+with ``scripts/promote_model.py``.
 """
 from __future__ import annotations
 
@@ -34,7 +44,7 @@ if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 from othello_rl.environment.board import Board  # noqa: E402
-from othello_rl.eval_external import EgaroucidEngine, run_match  # noqa: E402
+from othello_rl.eval_external import EgaroucidEngine, finetune_on_records, run_match  # noqa: E402
 from othello_rl.rl.checkpoint import Registry, resolve_checkpoint  # noqa: E402
 from othello_rl.utils.seed import seed_everything  # noqa: E402
 from othello_rl.webapp.bot_service import OthelloBot  # noqa: E402
@@ -71,6 +81,20 @@ def main(argv=None) -> int:
     ap.add_argument("--out-dir", default="results/egaroucid", help="where match JSON is written")
     ap.add_argument("--no-save", action="store_true", help="do not write result files")
     ap.add_argument("--quiet", action="store_true", help="summary only, no per-move log")
+
+    tr = ap.add_argument_group("training (opt-in — scratch candidate, never production)")
+    tr.add_argument("--train", action="store_true",
+                    help="fine-tune the model on the games it just played")
+    tr.add_argument("--train-loops", type=int, default=1,
+                    help="repeat play->learn this many times (default 1)")
+    tr.add_argument("--train-grad-steps", type=int, default=None,
+                    help="SGD steps per fine-tune (default: FineTuneConfig, 120)")
+    tr.add_argument("--train-lr", type=float, default=None, help="fine-tune learning rate")
+    tr.add_argument("--train-guardrail-games", type=int, default=None,
+                    help="games vs Random for the before/after rollback guardrail")
+    tr.add_argument("--train-out", default=None,
+                    help="where to write the fine-tuned candidate "
+                         "(default checkpoints/experiments/egaroucid_ft_<stamp>.pt)")
     args = ap.parse_args(argv)
 
     seed_everything(args.seed)
@@ -116,19 +140,76 @@ def main(argv=None) -> int:
           f"{desc['threads']} thread(s)  ·  book {'off' if args.nobook else 'on'}")
 
     verbose = not args.quiet
+    n_loops = max(1, args.train_loops) if args.train else 1
+    train_reports = []
     try:
-        # one game is just a 1-game match, so `--games 1` == game 1 of `--games N`
-        summary = run_match(bot, engine, games=args.games,
-                            opening_plies=args.opening_plies, seed=args.seed,
-                            start_color=args.start_color, verbose=verbose)
+        for loop in range(n_loops):
+            if n_loops > 1:
+                print(f"\n{'#' * 56}\n# Round {loop + 1}/{n_loops}\n{'#' * 56}")
+            # one game is just a 1-game match, so `--games 1` == game 1 of `--games N`
+            summary = run_match(bot, engine, games=args.games,
+                                opening_plies=args.opening_plies,
+                                seed=args.seed + loop * 1000,
+                                start_color=args.start_color, verbose=verbose)
+            _print_summary(summary, args)
+
+            if args.train:
+                rep = finetune_on_records(
+                    bot, summary.records,
+                    grad_steps=args.train_grad_steps, lr=args.train_lr,
+                    guardrail_games=args.train_guardrail_games)
+                train_reports.append(rep)
+                _print_finetune(rep, loop)
+                if rep.rolled_back and loop + 1 < n_loops:
+                    print("  -> guardrail rolled the update back; stopping the training loop")
+                    break
     finally:
         engine.close()
 
-    _print_summary(summary, args)
+    ft_out = None
+    if args.train:
+        ft_out = _save_finetuned(bot, train_reports, args, info)
 
     if not args.no_save:
-        _save(summary, args, ckpt_path, origin, info, desc)
+        _save(summary, args, ckpt_path, origin, info, desc, train_reports, ft_out)
     return 0
+
+
+def _print_finetune(rep, loop: int) -> None:
+    print("\n" + "-" * 56)
+    print(f"Fine-tune {loop + 1}: learned the bot's moves from this round")
+    print(f"  grad steps        : {rep.grad_steps}")
+    print(f"  reinforced / pen. : {rep.n_reinforced} / {rep.n_penalised}")
+    print(f"  TD loss           : {rep.loss_before:.4f} -> {rep.loss_after:.4f}")
+    print(f"  win% vs Random    : {rep.winrate_vs_random_before:.3f} -> "
+          f"{rep.winrate_vs_random_after:.3f}  (guardrail)")
+    if rep.rolled_back:
+        print("  result            : ROLLED BACK — the update made the bot weaker, discarded")
+    else:
+        print(f"  result            : kept (fine-tune #{rep.version})")
+
+
+def _save_finetuned(bot, reports, args, info):
+    kept = [r for r in reports if not r.rolled_back]
+    if not kept:
+        print("\nNo fine-tune was kept (every round hit the guardrail) — "
+              "nothing written, model on disk unchanged.")
+        return None
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out = Path(args.train_out) if args.train_out else \
+        _ROOT / "checkpoints" / "experiments" / f"egaroucid_ft_{stamp}.pt"
+    if not out.is_absolute():
+        out = _ROOT / out
+    out.parent.mkdir(parents=True, exist_ok=True)
+    bot.agent.save(out, version=f"egaroucid_ft_{stamp}",
+                   parent=str(info["version"]),
+                   method=f"finetune from {args.games}-game Egaroucid(level {args.level}) "
+                          f"match x{len(kept)} kept round(s)")
+    print(f"\nsaved fine-tuned CANDIDATE: {out}")
+    print("  production + registry are unchanged. To evaluate / promote it:")
+    print(f"    python3 scripts/eval_bot.py --checkpoint {out} --vs-production")
+    print(f"    python3 scripts/promote_model.py {out}   # only if it passes the criterion")
+    return out
 
 
 def _san(action: int) -> str:
@@ -159,7 +240,9 @@ def _print_summary(s, args) -> None:
     print(f"Egaroucid's own final verdict matched our engine on {agree}/{s.games} games")
 
 
-def _save(summary, args, ckpt_path, origin, model_info, engine_desc) -> None:
+def _save(summary, args, ckpt_path, origin, model_info, engine_desc,
+          train_reports=None, ft_out=None) -> None:
+    from dataclasses import asdict
     out_dir = Path(args.out_dir)
     if not out_dir.is_absolute():
         out_dir = _ROOT / out_dir
@@ -186,10 +269,19 @@ def _save(summary, args, ckpt_path, origin, model_info, engine_desc) -> None:
             "seed": args.seed,
             "book": not args.nobook,
             "start_color": args.start_color,
+            "train": bool(args.train),
+            "train_loops": args.train_loops if args.train else 0,
         },
         "summary": {k: v for k, v in summary.to_dict().items() if k != "records"},
         "games": summary.to_dict()["records"],
     }
+    if train_reports:
+        payload["training"] = {
+            "candidate_checkpoint": str(ft_out) if ft_out else None,
+            "promoted": False,
+            "rounds": [{k: v for k, v in asdict(r).items() if k != "grades"}
+                       for r in train_reports],
+        }
     match_path = out_dir / f"match_{stamp}.json"
     match_path.write_text(json.dumps(payload, indent=2) + "\n")
 

@@ -316,3 +316,46 @@ def run_match(bot, engine: EgaroucidEngine, *, games: int = 10,
                         verbose=verbose, printer=printer)
         records.append(rec)
     return summarise(records, perf_counter() - t0)
+
+
+# --------------------------------------------------------------------------- #
+# learning from the match (opt-in; scratch model only, never production)
+# --------------------------------------------------------------------------- #
+def records_to_training_games(records: Sequence[GameRecord]) -> List[dict]:
+    """Turn finished :class:`GameRecord`s into the dicts
+    ``OthelloBot.finetune_from_games`` expects — real placements only (its
+    replay re-inserts forced passes), each game teaching the RL bot *its own*
+    side's moves."""
+    games: List[dict] = []
+    for r in records:
+        if r.error:
+            continue
+        actions = [m["action"] for m in r.moves if not m["pass"]]
+        if actions:
+            games.append({"actions": actions, "learn_color": r.rl_color})
+    return games
+
+
+def finetune_on_records(bot, records: Sequence[GameRecord], *,
+                        grad_steps: Optional[int] = None,
+                        lr: Optional[float] = None,
+                        guardrail_games: Optional[int] = None):
+    """Fine-tune ``bot`` (an ``OthelloBot``) on the games it just played, using
+    the project's existing behaviour-cloning + shaping + **guardrail rollback**
+    path (`OthelloBot.finetune_from_games`).
+
+    This mutates the in-memory model only. Persisting it is the caller's job and
+    must never target `checkpoints/production/` or the registry — the fine-tuned
+    net is a *candidate*, evaluated/promoted separately by
+    `scripts/{eval_bot,promote_model}.py`.
+    """
+    if grad_steps is not None:
+        bot.ft.grad_steps = int(grad_steps)
+    if lr is not None:
+        bot.ft.lr = float(lr)
+    if guardrail_games is not None:
+        bot.ft.guardrail_games = int(guardrail_games)
+    games = records_to_training_games(records)
+    if not games:
+        raise ValueError("no usable games to train on (all had errors)")
+    return bot.finetune_from_games(games)
