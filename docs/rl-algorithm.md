@@ -46,6 +46,29 @@ This makes the environment a stationary MDP, so vanilla DQN convergence
 arguments apply. Self-play (Phase 7) reintroduces a moving opponent via an
 opponent pool.
 
+## Reward shaping for corner safety (`rl/shaping.py`)
+
+The sparse ±1 terminal reward gives the small conv net almost no gradient signal
+about corners, so it learns to play the **X-squares** (b2 / g2 / b7 / g7) next to
+an empty corner and loses the corner a few plies later — the single biggest
+weakness of the trained bot.
+
+`CornerShaping` adds a **potential-based** shaping term (Ng, Harada & Russell
+1999): `F(s, s') = γ·Φ(s') − Φ(s)`, where
+
+```
+Φ(board, learner) =  corner_w · (my corners − opp corners)
+                   −  x_square_w · (my X-squares − opp X-squares,  next to a still-EMPTY corner)
+                   −  c_square_w · (… C-squares …)
+```
+
+Because it is potential-based, the optimal policy is provably unchanged — it only
+densifies the learning signal. `FixedOpponentEnv(shaping=…)` applies it per step
+from the learner's perspective with `Φ(terminal) = 0`; both `scripts/train.py`
+and `scripts/selfplay.py` read a `shaping:` block (`gamma` from `dqn.gamma`).
+Weights are kept small (0.20 / 0.12 / 0.04) so shaping guides without swamping the
+win/loss reward. Set `enabled: false` or drop the block to train without it.
+
 ## Network
 
 `SmallOthelloNet`: 3×(3×3 conv, 32–64 ch, BN, ReLU) → flatten → MLP → 65 logits
