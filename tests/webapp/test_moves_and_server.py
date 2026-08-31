@@ -196,6 +196,12 @@ def test_play_and_analyse_flow(server):
     cur = partial["positions"][-1]
     assert cur["legal_actions"] and cur["eval"]["moves"]
 
+    # eval bar tracks history navigation: GET = live, POST prefix = that position
+    live = _call(server, "/api/eval")
+    hist = _call(server, "/api/eval", {"history_actions": st["history_actions"][:6]})
+    assert 0.0 <= hist["winprob_black"] <= 1.0
+    assert hist != live or st["ply"] == 6
+
 
 def test_illegal_move_returns_400(server):
     _call(server, "/api/new", {"human_color": "black"})

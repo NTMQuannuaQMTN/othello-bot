@@ -120,6 +120,16 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame }) {
     if (game?.game_over) api("/games").then((d) => setSavedGames(d.count)).catch(() => {});
   }, [game?.game_over, game?.ply]);
 
+  // keep the eval bar in sync with the position being viewed (live or history)
+  useEffect(() => {
+    if (!game) return;
+    if (viewPly === null) { refreshEval(); return; }
+    const prefix = (game.history_actions || []).slice(0, viewPly);
+    api("/eval", { history_actions: prefix })
+      .then((e) => setEvalBlack(e.winprob_black ?? 0.5))
+      .catch(() => {});
+  }, [viewPly, game?.ply, refreshEval]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function finetune(scope) {
     setFt({ report: null, error: null, running: true });
     try {

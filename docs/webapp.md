@@ -59,12 +59,15 @@ An **interactive analysis board** — you don't type moves, you play them:
   move list (`f5 d6 c3 …`) or run-together transcript (`f5d6c3…`);
 - a `?analyse=<transcript>` URL opens straight into that line.
 
-The **eval bar** and **eval graph** are a win-probability for **Black** across the
-line, from the fast positional score (disc diff, mobility, corners, edges, corner
-danger) from Black's fixed perspective — *not* the DQN value, which is
-side-to-move-relative and just produces a per-ply zig-zag. It is sharpened as the
-board fills so a decided endgame reads as ~0 / 1. The bar fills from the bottom
-with Black's share, so the colour that's ahead fills the bar.
+The **eval bar** and **eval graph** are a win-probability for **Black** from a
+shallow **negamax + alpha-beta look-ahead** (`analysis/search.py`, heuristic leaf:
+disc diff, mobility, corners, edges, corner danger) — so they show *who will be
+ahead a few moves from now*, not just the current position. The DQN value is left
+out (side-to-move-relative, only a per-ply zig-zag). Sharpened as the board fills
+so a decided endgame reads as ~0 / 1. The bar fills from the bottom with Black's
+share, so the colour that's ahead fills the bar. In the Play tab the bar also
+tracks history navigation (`GET /api/eval` = live, `POST /api/eval
+{history_actions}` = that position).
 
 Below the graph, a **strategy read-out** per side: move-quality counts +
 `accuracy` (fraction of Good-or-better moves), corners / X-squares / edge moves
@@ -85,10 +88,12 @@ from all N saved games* (`scripts/finetune_from_games.py --learn both` offline).
 
 Grading follows chess.com's **Expected Points** model. Every legal move gets an
 **expected-points** value `EP(move)` = the mover's win probability after playing
-it (1 = winning, 0.5 = even, 0 = losing), from `bot_service.py::_expected_points`:
+it (1 = winning, 0.5 = even, 0 = losing), from `bot_service.py::_expected_points`
+— a shallow **look-ahead** search from each candidate move, so "Mistake" / "Blunder"
+means the move's *3-5-ply outcome* is worse than the best move's:
 
 ```
-EP(move) = 0.8 · positional_winprob(after move, mover's view)   # disc/mobility/edge/corner heuristic
+EP(move) = 0.8 · winprob( negamax(after move, ~2 plies) )       # look-ahead, heuristic leaf
          + 0.2 · bot_win_prob(move)                             # the DQN's (noisy) opinion
          −       corner_penalty(move)                           # see below
 ```

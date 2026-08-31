@@ -141,11 +141,16 @@ export default function AnalysisPanel({ loadLine, onBotChanged }) {
         footer={!pos.terminal && engineMoves.length > 0 && (
           <div className="board-legend">
             <span><i className="lg-best" /> best {engineMoves[0].san}{" "}
-              {pct(engineMoves[0].winprob)} win</span>
+              &rarr; {pct(engineMoves[0].winprob)} win</span>
+            {ply && ply.played === engineMoves[0].action && (
+              <span><b className="label Best">✓</b> you played the best move</span>
+            )}
             {ply && ply.played !== engineMoves[0].action && (
               <span><i className="lg-last" /> you played {ply.played_san}{" "}
                 {pct(ply.played_winprob)} win
-                {ply.drop > 0.001 && <b> (−{Math.round(ply.drop * 100)})</b>}</span>
+                <b className={"label " + ply.label}>
+                  {" "}{ply.label}{ply.drop > 0.001 ? ` −${Math.round(ply.drop * 100)}` : ""}</b>
+              </span>
             )}
           </div>
         )}
@@ -189,6 +194,10 @@ export default function AnalysisPanel({ loadLine, onBotChanged }) {
         )}
 
         <EvalGraph points={graphPoints} cursor={cursor} onSeek={setCursor} />
+        <p className="alt eval-caption">
+          Win probability for ⚫ Black from a short look-ahead search — who will be
+          ahead a few moves from now, not just the current count.
+        </p>
 
         <div className="analysis-summary">
           {["black", "white"].map((side) => {

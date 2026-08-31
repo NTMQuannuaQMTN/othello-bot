@@ -71,6 +71,15 @@ def classify_drop(expected_points_lost: float) -> Tuple[str, str]:
 _BOT_EP_WEIGHT = 0.2
 _COACH_SCALE = 18.0  # heuristic-value units -> tanh -> [0, 1)
 
+#: plies of negamax look-ahead. The eval bar / graph and every move's expected
+#: points come from a shallow alpha-beta search (analysis/search.py) so they show
+#: who will be better *a few moves from now*, not just the static position.
+#: ``_LOOKAHEAD_PLIES`` drives the position eval (one search); ``_EP_LOOKAHEAD``
+#: drives each candidate move's expected points (one search per legal move, kept
+#: a ply shallower for speed — pure-Python negamax).
+_LOOKAHEAD_PLIES = 3
+_EP_LOOKAHEAD = 2
+
 #: Corners dominate Othello and the small DQN is nearly blind to them, so corner
 #: safety is assessed directly and folded into a move's expected points — an
 #: X-square move genuinely shows fewer expected points, so it grades badly *and*
@@ -322,63 +331,64 @@ class OthelloBot:
         risk = self._corner_risk(board, action)
         return risk < 0.0, risk >= _RISK_X_SQUARE
 
-    def _mover_winprob(self, board: Board) -> float:
-        """Positional win probability for the side to move (0..1)."""
+    def _mover_winprob(self, board: Board, tt: Optional[dict] = None) -> float:
+        """Look-ahead win probability for the side to move (0..1)."""
         if board.is_terminal():
             w = board.winner()
             if w == 0:
                 return 0.5
             return 1.0 if w == board.player else 0.0
-        eb = _eval_black(self, board)
+        eb = _eval_black(self, board, tt)
         return eb if board.player == BLACK else 1.0 - eb
 
     def _expected_points(self, board: Board, q: np.ndarray,
-                         conts: Dict[int, float]) -> Dict[int, float]:
-        """``{action: the mover's expected points (win prob, 0..1) after it}``.
+                         conts: Dict[int, float],
+                         tt: Optional[dict] = None) -> Dict[int, float]:
+        """``{action: the mover's expected points (win prob, 0..1) after it}``,
+        from a shallow ``_LOOKAHEAD_PLIES``-deep negamax search — i.e. how good the
+        move looks *a few moves from now*, not just the static position.
 
         This one number drives everything — the grade (EP lost = EP(best) −
         EP(played), chess.com's model), the "bot likes" order and the dashed best
-        move — so they can never disagree. Corner danger is folded straight in, so
-        an X-square move really does show fewer expected points.
+        move — so they can never disagree. Corner danger is folded straight in.
         """
-        mover = board.player
+        from othello_rl.analysis.search import move_value
+        scale = _eval_scale(board)
         out: Dict[int, float] = {}
         for a in conts:
             a = int(a)
             try:
-                child = board.apply(action_to_rc(a))
+                v = move_value(board, action_to_rc(a), _EP_LOOKAHEAD + 1,
+                               _HW, tt=tt)             # mover's perspective, heuristic units
             except Exception:  # pragma: no cover
                 continue
-            if child.is_terminal():
-                w = child.winner()
-                base = 1.0 if w == mover else (0.5 if w == 0 else 0.0)
-            else:
-                m = self._mover_winprob(child)          # positional, child's mover
-                base = m if child.player == mover else 1.0 - m
-                base = (1.0 - _BOT_EP_WEIGHT) * base + _BOT_EP_WEIGHT * _winprob(float(q[a]))
+            base = float(np.clip(0.5 + 0.5 * np.tanh(v / scale), 0.02, 0.98))
+            base = (1.0 - _BOT_EP_WEIGHT) * base + _BOT_EP_WEIGHT * _winprob(float(q[a]))
             base -= _corner_ep_penalty(self._corner_risk(board, a))
             out[a] = float(np.clip(base, 0.0, 1.0))
         return out
 
-    def _ranked_moves(self, board: Board, q: np.ndarray, legal) -> List[int]:
+    def _ranked_moves(self, board: Board, q: np.ndarray, legal,
+                      tt: Optional[dict] = None) -> List[int]:
         """Legal moves ordered by expected points (falls back to raw win-prob only
         for a forced-pass position, where there are no continuations)."""
         conts = self._coach_conts(board)
         if not conts:
             return sorted((int(a) for a in legal), key=lambda a: -q[a])
-        ep = self._expected_points(board, q, conts)
+        ep = self._expected_points(board, q, conts, tt)
         return sorted(ep, key=ep.get, reverse=True)
 
-    def grade_move(self, board: Board, played: int) -> dict:
+    def grade_move(self, board: Board, played: int, tt: Optional[dict] = None) -> dict:
         """Grade one move by **expected points lost** vs the best move
         (chess.com's model): 0 lost -> Best, then Excellent / Good / Inaccuracy /
-        Mistake / Blunder per ``_CLASS_TABLE``. Corner danger is already inside
-        the expected-points number, so there is no separate override."""
+        Mistake / Blunder per ``_CLASS_TABLE``. Expected points come from a shallow
+        look-ahead, so a Mistake/Blunder is a move whose *3-5-ply outcome* is worse
+        than the best move's; if you played the best move, EP lost is 0 -> "Best"."""
         q, mask = self._q_values(board)
         legal = np.nonzero(mask)[0]
         played = int(played)
         conts = self._coach_conts(board)
-        ep = self._expected_points(board, q, conts) if conts else {}
+        ep = self._expected_points(board, q, conts, tt) if conts else {}
 
         if ep:
             ranked = sorted(ep, key=ep.get, reverse=True)
@@ -389,7 +399,7 @@ class OthelloBot:
         else:  # forced pass — nothing to grade against
             ranked = sorted((int(a) for a in legal), key=lambda a: -q[a])
             best = ranked[0] if ranked else PASS_ACTION
-            best_ep = played_ep = self._mover_winprob(board)
+            best_ep = played_ep = self._mover_winprob(board, tt)
             ep_lost = 0.0
 
         coach_best = max(conts, key=conts.get) if conts else best
@@ -421,10 +431,13 @@ class OthelloBot:
             "label": label, "glyph": glyph,
         }
 
-    def evaluate_position(self, board: Board) -> dict:
+    def evaluate_position(self, board: Board, tt: Optional[dict] = None) -> dict:
         """Bot's read of a position: expected points (win prob) for the side to
-        move and for Black, plus the legal moves ranked by expected points."""
+        move and for Black, plus the legal moves ranked by expected points. All
+        from a shallow look-ahead — the eval bar shows who leads a few moves on."""
         with self._lock:
+            if tt is None:
+                tt = {}
             if board.is_terminal():
                 w = board.winner()
                 wp_black = 1.0 if w == BLACK else (0.0 if w == WHITE else 0.5)
@@ -433,11 +446,11 @@ class OthelloBot:
             q, mask = self._q_values(board)
             legal = np.nonzero(mask)[0]
             conts = self._coach_conts(board)
-            ep = self._expected_points(board, q, conts) if conts else \
+            ep = self._expected_points(board, q, conts, tt) if conts else \
                 {int(a): _winprob(float(q[a])) for a in legal}
             ranked = sorted(ep, key=ep.get, reverse=True)
             wp_stm = float(ep[ranked[0]])
-            wp_black = _eval_black(self, board)  # positional, for the graph
+            wp_black = _eval_black(self, board, tt)  # look-ahead, for bar + graph
             moves = []
             for a in ranked:
                 risk = self._corner_risk(board, int(a))
@@ -460,6 +473,7 @@ class OthelloBot:
         the initial position."""
         with self._lock:
             out: List[MoveAnalysis] = []
+            tt: dict = {}
             state = Board.initial()
             for ply, a in enumerate(actions):
                 a = int(a)
@@ -468,7 +482,7 @@ class OthelloBot:
                 if a == PASS_ACTION or not state.legal_moves():
                     state = state.apply(None)
                     continue
-                g = self.grade_move(state, a)
+                g = self.grade_move(state, a, tt)
                 q = g["q"]
                 ranked = g["ranked"]
                 best = g["bot_best"]
@@ -477,7 +491,7 @@ class OthelloBot:
                 drop = g["ep_lost"]
                 label, glyph = g["label"], g["glyph"]
                 nxt = state.apply(a)
-                eval_black = _eval_black(self, nxt)
+                eval_black = _eval_black(self, nxt, tt)
                 out.append(MoveAnalysis(
                     ply=ply, side=_side(state.player), played=a, played_san=_san(a),
                     played_value=float(q[a]), played_winprob=played_wp,
@@ -494,7 +508,7 @@ class OthelloBot:
                 state = nxt
             return out
 
-    def _position_payload(self, state: Board) -> dict:
+    def _position_payload(self, state: Board, tt: Optional[dict] = None) -> dict:
         b, w = state.scores()
         moves = state.legal_moves()
         if moves:
@@ -511,7 +525,7 @@ class OthelloBot:
                        if state.is_terminal() else None),
             "legal_actions": legal,
             "score": {"black": b, "white": w},
-            "eval": self.evaluate_position(state),
+            "eval": self.evaluate_position(state, tt),
         }
 
     def analyse_line(self, actions: Sequence[int], top_k: int = 3) -> dict:
@@ -521,8 +535,9 @@ class OthelloBot:
         _CORNERS = {(0, 0), (0, 7), (7, 0), (7, 7)}
         _XSQ = {(1, 1), (1, 6), (6, 1), (6, 6)}
         with self._lock:
+            tt: dict = {}
             state = Board.initial()
-            positions = [self._position_payload(state)]
+            positions = [self._position_payload(state, tt)]
             plies: List[MoveAnalysis] = []
             strat = {"black": {"corners": 0, "x_squares": 0, "edges": 0,
                                "mobility": [], "moves": 0},
@@ -534,9 +549,9 @@ class OthelloBot:
                     break
                 if a == PASS_ACTION or not state.legal_moves():
                     state = state.apply(None)
-                    positions.append(self._position_payload(state))
+                    positions.append(self._position_payload(state, tt))
                     continue
-                g = self.grade_move(state, a)
+                g = self.grade_move(state, a, tt)
                 q = g["q"]
                 ranked = g["ranked"]
                 best = g["bot_best"]
@@ -554,7 +569,7 @@ class OthelloBot:
                     sd["edges"] += 1
 
                 nxt = state.apply(a)
-                pos = self._position_payload(nxt)
+                pos = self._position_payload(nxt, tt)
                 positions.append(pos)
                 ep = g["ep"]
                 plies.append(MoveAnalysis(
@@ -679,13 +694,14 @@ class OthelloBot:
         grades: List[dict] = []
         trans: List[tuple] = []
         n_reinf = n_pen = 0
+        tt: dict = {}
 
         for i, a in enumerate(actions):
             a = int(a)
             s = states[i]
             if s.is_terminal() or s.player != learn_side or not s.legal_moves():
                 continue
-            g = self.grade_move(s, a)
+            g = self.grade_move(s, a, tt)
             label, best, coach_a = g["label"], g["bot_best"], g["coach_best"]
             gives_c, takes_c = g["gives_corner"], g["takes_corner"]
             big_loss, coach_drop = g["big_loss"], g["coach_drop"]
@@ -924,19 +940,25 @@ def _san(action: int) -> str:
     return square_name(action_to_rc(action))
 
 
-def _eval_black(bot: "OthelloBot", board: Board) -> float:
+def _eval_scale(board: Board) -> float:
+    """tanh scale for turning a heuristic-eval value into a win probability —
+    tighter as the board fills, so a decided endgame reads as ~0 / 1."""
+    filled = int(np.count_nonzero(board.array))
+    return 26.0 - 14.0 * (filled / 64.0)  # ~26 in the opening -> ~12 late
+
+
+def _eval_black(bot: "OthelloBot", board: Board, tt: Optional[dict] = None) -> float:
     """Win probability for BLACK, for the eval bar / graph.
 
-    The DQN's value estimate is STM-relative and near-constant (~0.65 for whoever
-    is to move), so blending it in just adds a per-ply zig-zag. The eval line is
-    therefore the fast positional score (disc diff, mobility, corners, edges,
-    corner danger) from Black's fixed perspective — smooth and directional —
-    sharpened as the board fills so a decided endgame reads as ~0/1.
+    A shallow ``_LOOKAHEAD_PLIES``-deep alpha-beta search (heuristic leaf: disc
+    diff, mobility, corners, edges, corner danger) — so the bar shows who will be
+    ahead a few moves from now, not just the static position. The DQN value is
+    left out (it is STM-relative and near-constant, only a per-ply zig-zag).
     """
     if board.is_terminal():
         w = board.winner()
         return 1.0 if w == BLACK else (0.0 if w == WHITE else 0.5)
-    h = _heval(board.array, BLACK, _HW)  # signed: + = good for black
-    filled = int(np.count_nonzero(board.array))
-    scale = 26.0 - 14.0 * (filled / 64.0)  # ~26 in the opening -> ~12 late
-    return float(np.clip(0.5 + 0.5 * np.tanh(h / scale), 0.02, 0.98))
+    from othello_rl.analysis.search import shallow_value
+    v = shallow_value(board, _LOOKAHEAD_PLIES, _HW, tt=tt)  # side-to-move perspective
+    stm_wp = float(np.clip(0.5 + 0.5 * np.tanh(v / _eval_scale(board)), 0.02, 0.98))
+    return stm_wp if board.player == BLACK else 1.0 - stm_wp

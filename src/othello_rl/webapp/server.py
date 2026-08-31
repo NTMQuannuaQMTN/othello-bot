@@ -24,6 +24,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Dict
 
+from othello_rl.environment.board import Board
+
 from .bot_service import OthelloBot
 from .moves import parse_game
 from .session import GameSession
@@ -144,9 +146,18 @@ def make_handler(app: AppState):
         return app.session.state()
 
     @route("GET /api/eval")
-    def _eval(_):
-        """Bot's read of the current game position (for the eval bar)."""
-        return app.bot.evaluate_position(app.session.board)
+    @route("POST /api/eval")
+    def _eval(body):
+        """Bot's read of a position (eval bar). GET -> the live game position;
+        POST ``{history_actions: [...]}`` -> the position after that prefix (so the
+        bar tracks history navigation)."""
+        acts = (body or {}).get("history_actions")
+        if acts is None:
+            return app.bot.evaluate_position(app.session.board)
+        b = Board.initial()
+        for a in (int(x) for x in acts):
+            b = b.apply(None if (a == 64 or not b.legal_moves()) else divmod(a, 8))
+        return app.bot.evaluate_position(b)
 
     @route("POST /api/new")
     def _new(body):
