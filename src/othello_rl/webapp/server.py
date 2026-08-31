@@ -148,16 +148,17 @@ def make_handler(app: AppState):
     @route("GET /api/eval")
     @route("POST /api/eval")
     def _eval(body):
-        """Bot's read of a position (eval bar). GET -> the live game position;
-        POST ``{history_actions: [...]}`` -> the position after that prefix (so the
-        bar tracks history navigation)."""
+        """The eval bar (Black's look-ahead win probability). GET -> the live game
+        position; POST ``{history_actions: [...]}`` -> the position after that
+        prefix (so the bar tracks history navigation). Lightweight — one search,
+        not one per legal move; use ``POST /api/analyse`` for the full picture."""
         acts = (body or {}).get("history_actions")
         if acts is None:
-            return app.bot.evaluate_position(app.session.board)
+            return app.bot.bar_eval(app.session.board)
         b = Board.initial()
         for a in (int(x) for x in acts):
             b = b.apply(None if (a == 64 or not b.legal_moves()) else divmod(a, 8))
-        return app.bot.evaluate_position(b)
+        return app.bot.bar_eval(b)
 
     @route("POST /api/new")
     def _new(body):

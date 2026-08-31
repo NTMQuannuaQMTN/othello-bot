@@ -17,7 +17,7 @@ def bot():
     agent = DQNAgent(NetworkConfig(channels=8, blocks=2, hidden=16), seed=0)
     return OthelloBot(agent, ft_config=FineTuneConfig(
         grad_steps=8, batch_size=16, anchor_transitions=120, guardrail_games=6,
-        buffer_capacity=2000))
+        buffer_capacity=2000, grade_lookahead=2))
 
 
 def _random_game(seed=0, max_plies=200):
@@ -104,6 +104,22 @@ def test_analyse_line_navigation_payload(bot):
     for ply, a in zip(d["plies"], acts):
         assert ply["played"] == a
         assert ply["label"] in ("Best", "Excellent", "Good", "Inaccuracy", "Mistake", "Blunder")
+
+
+def test_analyse_line_prefix_cache_matches_fresh(bot):
+    from othello_rl.webapp.moves import parse_game
+    acts = parse_game("f5d6c3d3c4f4f6f3")
+    bot._line_cache = None
+    incremental = None
+    for n in range(2, len(acts) + 1):          # grow the line one move at a time
+        incremental = bot.analyse_line(acts[:n])
+    bot._line_cache = None                       # force a from-scratch run
+    fresh = bot.analyse_line(acts)
+    assert incremental["n_moves"] == fresh["n_moves"]
+    assert [p["label"] for p in incremental["plies"]] == [p["label"] for p in fresh["plies"]]
+    assert [round(g["eval_black"], 4) for g in incremental["eval_graph"]] == \
+           [round(g["eval_black"], 4) for g in fresh["eval_graph"]]
+    assert incremental["strategy"] == fresh["strategy"]
 
 
 def test_analyse_line_reports_strategy(bot):

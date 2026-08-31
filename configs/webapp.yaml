@@ -26,3 +26,4 @@ finetune:
   anchor_transitions: 2000 # bot-vs-baseline transitions kept to resist forgetting
   guardrail_games: 60      # games vs Random before/after; roll back if it drops
   guardrail_margin: 0.10
+  grade_lookahead: 4       # plies of negamax look-ahead when judging moves for training

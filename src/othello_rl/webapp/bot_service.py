@@ -168,6 +168,7 @@ class FineTuneConfig:
     anchor_transitions: int = 2_000
     guardrail_games: int = 60
     guardrail_margin: float = 0.10  # roll back if winrate vs random drops by > this
+    grade_lookahead: int = 3        # plies of look-ahead when judging moves for training
 
 
 class OthelloBot:
@@ -342,11 +343,11 @@ class OthelloBot:
         return eb if board.player == BLACK else 1.0 - eb
 
     def _expected_points(self, board: Board, q: np.ndarray,
-                         conts: Dict[int, float],
-                         tt: Optional[dict] = None) -> Dict[int, float]:
+                         conts: Dict[int, float], tt: Optional[dict] = None,
+                         lookahead: int = _EP_LOOKAHEAD) -> Dict[int, float]:
         """``{action: the mover's expected points (win prob, 0..1) after it}``,
-        from a shallow ``_LOOKAHEAD_PLIES``-deep negamax search — i.e. how good the
-        move looks *a few moves from now*, not just the static position.
+        from a shallow ``lookahead``-deep negamax search — i.e. how good the move
+        looks *a few moves from now*, not just the static position.
 
         This one number drives everything — the grade (EP lost = EP(best) −
         EP(played), chess.com's model), the "bot likes" order and the dashed best
@@ -358,7 +359,7 @@ class OthelloBot:
         for a in conts:
             a = int(a)
             try:
-                v = move_value(board, action_to_rc(a), _EP_LOOKAHEAD + 1,
+                v = move_value(board, action_to_rc(a), int(lookahead) + 1,
                                _HW, tt=tt)             # mover's perspective, heuristic units
             except Exception:  # pragma: no cover
                 continue
@@ -378,17 +379,19 @@ class OthelloBot:
         ep = self._expected_points(board, q, conts, tt)
         return sorted(ep, key=ep.get, reverse=True)
 
-    def grade_move(self, board: Board, played: int, tt: Optional[dict] = None) -> dict:
+    def grade_move(self, board: Board, played: int, tt: Optional[dict] = None,
+                   lookahead: int = _EP_LOOKAHEAD) -> dict:
         """Grade one move by **expected points lost** vs the best move
         (chess.com's model): 0 lost -> Best, then Excellent / Good / Inaccuracy /
-        Mistake / Blunder per ``_CLASS_TABLE``. Expected points come from a shallow
-        look-ahead, so a Mistake/Blunder is a move whose *3-5-ply outcome* is worse
-        than the best move's; if you played the best move, EP lost is 0 -> "Best"."""
+        Mistake / Blunder per ``_CLASS_TABLE``. Expected points come from a
+        ``lookahead``-ply search, so a Mistake/Blunder is a move whose few-move
+        outcome is worse than the best move's; play the best move -> EP lost 0 ->
+        "Best"."""
         q, mask = self._q_values(board)
         legal = np.nonzero(mask)[0]
         played = int(played)
         conts = self._coach_conts(board)
-        ep = self._expected_points(board, q, conts, tt) if conts else {}
+        ep = self._expected_points(board, q, conts, tt, lookahead) if conts else {}
 
         if ep:
             ranked = sorted(ep, key=ep.get, reverse=True)
@@ -430,6 +433,24 @@ class OthelloBot:
             "bot_drop": bot_drop, "coach_drop": coach_drop, "regret": float(ep_lost),
             "label": label, "glyph": glyph,
         }
+
+    def bar_eval(self, board: Board) -> dict:
+        """Just the eval bar: Black's look-ahead win probability + the score.
+        Much cheaper than :meth:`evaluate_position` (one search, not one per
+        legal move) — used by the Play tab's bar, which needs nothing else."""
+        with self._lock:
+            b, w = board.scores()
+            if board.is_terminal():
+                wn = board.winner()
+                return {"terminal": True,
+                        "winner": _side(wn) if wn else "draw",
+                        "winprob_black": 1.0 if wn == BLACK else 0.0 if wn == WHITE else 0.5,
+                        "winprob_stm": None, "score": {"black": b, "white": w}, "moves": []}
+            eb = _eval_black(self, board, {})
+            return {"terminal": False, "winner": None,
+                    "winprob_black": eb,
+                    "winprob_stm": eb if board.player == BLACK else 1.0 - eb,
+                    "score": {"black": b, "white": w}, "moves": []}
 
     def evaluate_position(self, board: Board, tt: Optional[dict] = None) -> dict:
         """Bot's read of a position: expected points (win prob) for the side to
@@ -531,19 +552,52 @@ class OthelloBot:
     def analyse_line(self, actions: Sequence[int], top_k: int = 3) -> dict:
         """Analysis of a line for the interactive (Lichess-style) analysis board:
         one position payload per ply boundary (index 0 = start), plus the grade of
-        every played move, an eval graph and a per-side summary."""
+        every played move, an eval graph and a per-side summary.
+
+        The interactive board re-analyses the *whole* line on every move; a small
+        prefix cache means adding one move only searches the new position, not all
+        of them (otherwise a long line takes seconds per click)."""
         _CORNERS = {(0, 0), (0, 7), (7, 0), (7, 7)}
         _XSQ = {(1, 1), (1, 6), (6, 1), (6, 6)}
         with self._lock:
+            acts = tuple(int(a) for a in actions)
+            cache = getattr(self, "_line_cache", None)
+            if cache is None:
+                from collections import OrderedDict
+                cache = self._line_cache = OrderedDict()
+
             tt: dict = {}
-            state = Board.initial()
-            positions = [self._position_payload(state, tt)]
-            plies: List[MoveAnalysis] = []
-            strat = {"black": {"corners": 0, "x_squares": 0, "edges": 0,
-                               "mobility": [], "moves": 0},
-                     "white": {"corners": 0, "x_squares": 0, "edges": 0,
-                               "mobility": [], "moves": 0}}
-            for ply, a in enumerate(actions):
+            start = 0
+            if acts in cache:
+                positions, plies, strat = copy.deepcopy(cache[acts])
+                cache.move_to_end(acts)
+                start = len(acts)
+                state = Board.initial()
+                for a in acts:
+                    state = state.apply(None if (a == PASS_ACTION or not state.legal_moves())
+                                        else action_to_rc(a))
+            else:
+                prefix = max((k for k in cache if len(k) < len(acts) and acts[:len(k)] == k),
+                             key=len, default=None)
+                if prefix is not None:
+                    positions, plies, strat = copy.deepcopy(cache[prefix])
+                    start = len(prefix)
+                    state = Board.initial()
+                    for a in prefix:
+                        state = state.apply(None if (a == PASS_ACTION or not state.legal_moves())
+                                            else action_to_rc(a))
+                else:
+                    state = Board.initial()
+                    positions = [self._position_payload(state, tt)]
+                    plies = []
+                    strat = {"black": {"corners": 0, "x_squares": 0, "edges": 0,
+                                       "mobility": [], "moves": 0},
+                             "white": {"corners": 0, "x_squares": 0, "edges": 0,
+                                       "mobility": [], "moves": 0}}
+
+            for ply, a in enumerate(acts):
+                if ply < start:
+                    continue
                 a = int(a)
                 if state.is_terminal():
                     break
@@ -588,12 +642,18 @@ class OthelloBot:
                 ))
                 state = nxt
 
+            # cache the raw (pre-finalise) analysis keyed by this exact line
+            cache[acts] = copy.deepcopy((positions, plies, strat))
+            while len(cache) > 8:
+                cache.popitem(last=False)
+
             summary: Dict[str, Dict[str, int]] = {"black": {}, "white": {}}
             for p in plies:
                 summary[p.side][p.label] = summary[p.side].get(p.label, 0) + 1
             graph = [{"ply": i - 1, "eval_black": positions[i]["eval"]["winprob_black"]}
                      for i in range(len(positions))]
 
+            strat = copy.deepcopy(strat)      # finalise on a copy; the cache keeps the raw form
             final = positions[-1]
             fb, fw = final["score"]["black"], final["score"]["white"]
             for side in ("black", "white"):
@@ -695,13 +755,14 @@ class OthelloBot:
         trans: List[tuple] = []
         n_reinf = n_pen = 0
         tt: dict = {}
+        look = int(getattr(self.ft, "grade_lookahead", _EP_LOOKAHEAD))
 
         for i, a in enumerate(actions):
             a = int(a)
             s = states[i]
             if s.is_terminal() or s.player != learn_side or not s.legal_moves():
                 continue
-            g = self.grade_move(s, a, tt)
+            g = self.grade_move(s, a, tt, lookahead=look)
             label, best, coach_a = g["label"], g["bot_best"], g["coach_best"]
             gives_c, takes_c = g["gives_corner"], g["takes_corner"]
             big_loss, coach_drop = g["big_loss"], g["coach_drop"]
@@ -773,6 +834,7 @@ class OthelloBot:
         wr_after = self._winrate_vs_random(cfg.guardrail_games)
 
         rolled_back = wr_after < wr_before - cfg.guardrail_margin
+        self._line_cache = None            # weights changed -> stale analysis
         if rolled_back:
             self.agent.net.load_state_dict(prev_state)
             self.agent.net.eval()
@@ -906,6 +968,7 @@ class OthelloBot:
             self.agent.meta.extra.pop("version", None)
             self.agent.meta.extra.pop("parent", None)
             self._buffer = None
+            self._line_cache = None
             if self.state_dir:
                 self._save_version()
 

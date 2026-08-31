@@ -47,7 +47,7 @@ def server():
     agent = DQNAgent(NetworkConfig(channels=8, blocks=2, hidden=16), seed=0)
     bot = OthelloBot(agent, ft_config=FineTuneConfig(
         grad_steps=6, batch_size=16, anchor_transitions=120, guardrail_games=4,
-        buffer_capacity=1500))
+        buffer_capacity=1500, grade_lookahead=2))
     httpd = serve(bot, port=8912)
     th = threading.Thread(target=httpd.serve_forever, daemon=True)
     th.start()
@@ -86,7 +86,7 @@ def test_games_are_recorded_and_finetune_all(tmp_path):
     agent = DQNAgent(NetworkConfig(channels=8, blocks=2, hidden=16), seed=1)
     bot = OthelloBot(agent, state_dir=str(tmp_path), ft_config=FineTuneConfig(
         grad_steps=4, batch_size=16, anchor_transitions=80, guardrail_games=4,
-        buffer_capacity=1000))
+        buffer_capacity=1000, grade_lookahead=2))
     httpd = _serve(bot, port=8913)
     th = threading.Thread(target=httpd.serve_forever, daemon=True)
     th.start()
