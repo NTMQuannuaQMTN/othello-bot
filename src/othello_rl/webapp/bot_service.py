@@ -274,16 +274,30 @@ class OthelloBot:
         risk = self._corner_risk(board, action)
         return risk < 0.0, risk >= _RISK_X_SQUARE
 
-    def _ranked_moves(self, board: Board, q: np.ndarray, legal) -> List[int]:
-        """Legal moves ordered by a corner-aware blend of the bot's win-prob, so
-        the top suggestion is never a move that concedes (or risks) a corner."""
-        def key(a: int) -> float:
-            wp = _winprob(float(q[a]))
+    def _move_scores(self, board: Board, q: np.ndarray,
+                     conts: Dict[int, float]) -> Dict[int, float]:
+        """Combined quality score per legal move (higher = better): the bot's
+        win-prob and the 1-ply heuristic — both mapped to [0, 1] — blended, minus
+        a corner-risk penalty. Move grading, the dashed best move and "bot likes"
+        all read *this one* number, so they can never disagree (a move shown as
+        best always grades "Best")."""
+        out: Dict[int, float] = {}
+        for a, cont in conts.items():
+            bot_wp = _winprob(float(q[a]))
+            coach_wp = 0.5 + 0.5 * float(np.tanh(cont / _COACH_SCALE))
             risk = self._corner_risk(board, int(a))
-            if risk < 0.0:
-                return wp + _CORNER_RANK_BONUS
-            return wp - _CORNER_RANK_PENALTY * risk
-        return sorted((int(a) for a in legal), key=key, reverse=True)
+            adj = -_CORNER_RANK_BONUS if risk < 0.0 else _CORNER_RANK_PENALTY * risk
+            out[int(a)] = _BOT_WEIGHT * bot_wp + _COACH_WEIGHT * coach_wp - adj
+        return out
+
+    def _ranked_moves(self, board: Board, q: np.ndarray, legal) -> List[int]:
+        """Legal moves ordered by :meth:`_move_scores` (falls back to raw win-prob
+        only for a forced-pass position, where there are no continuations)."""
+        conts = self._coach_conts(board)
+        if not conts:
+            return sorted((int(a) for a in legal), key=lambda a: -q[a])
+        scores = self._move_scores(board, q, conts)
+        return sorted(scores, key=scores.get, reverse=True)
 
     def _mover_winprob(self, board: Board) -> float:
         """Blended win-prob for the side to move (0..1), for big-loss detection."""
@@ -296,28 +310,27 @@ class OthelloBot:
         return eb if board.player == BLACK else 1.0 - eb
 
     def grade_move(self, board: Board, played: int) -> dict:
-        """Grade one move: bot win-prob regret + positional regret + a corner /
-        big-loss override -> Lichess-style label."""
+        """Grade one move. Regret is measured against the single combined score
+        from :meth:`_move_scores`, so the engine's own #1 move always has regret 0
+        (label "Best"); corner concessions and big losses add a hard floor."""
         q, mask = self._q_values(board)
         legal = np.nonzero(mask)[0]
         played = int(played)
-        ranked = self._ranked_moves(board, q, legal)
-        best = ranked[0]
-        bot_drop = max(0.0, _winprob(float(q[best])) - _winprob(float(q[played])))
-
         conts = self._coach_conts(board)
-        if played in conts and conts:
-            coach_best = max(conts, key=conts.get)
-            coach_raw = conts[coach_best] - conts[played]
-            coach_drop = float(np.tanh(max(0.0, coach_raw) / _COACH_SCALE))
-        else:
-            coach_best, coach_drop = best, 0.0
+        scores = self._move_scores(board, q, conts) if conts else {}
 
-        # the DQN and the coach each get a vote, but a strong single signal (a
-        # corner concession) must not be diluted — so combine with max(), not a
-        # weighted sum.
-        regret = max(_BOT_WEIGHT * bot_drop + _COACH_WEIGHT * coach_drop,
-                     0.6 * coach_drop)
+        if scores:
+            ranked = sorted(scores, key=scores.get, reverse=True)
+            best = ranked[0]
+            regret = max(0.0, scores[best] - scores.get(played, scores[best]))
+        else:  # forced pass — nothing to grade against
+            ranked = sorted((int(a) for a in legal), key=lambda a: -q[a])
+            best, regret = (ranked[0] if ranked else PASS_ACTION), 0.0
+        coach_best = max(conts, key=conts.get) if conts else best
+        coach_drop = (float(np.tanh(max(0.0, conts[coach_best] - conts.get(played, conts[coach_best]))
+                                    / _COACH_SCALE)) if conts else 0.0)
+        bot_drop = max(0.0, _winprob(float(q[best])) - _winprob(float(q[played]))) \
+            if played in range(64) else 0.0
 
         crisk = self._corner_risk(board, played)
         takes_c = crisk < 0.0
@@ -343,17 +356,13 @@ class OthelloBot:
             regret = max(regret, _REGRET_OPP_TAKES + 0.05)
 
         label, glyph = classify_drop(regret)
-        # You played the engine's top move (corner-aware) and it doesn't concede a
-        # corner -> that's "Best", period (matches the "✓ best" hint). A move that
-        # is *not* the top pick can't be "Best".
-        safe_top = played == best and crisk < _RISK_C_SQUARE and not big_loss
-        if safe_top and label in ("Excellent", "Good"):
-            label, glyph = "Best", ""
-        elif label == "Best" and not safe_top:
+        # regret(best) == 0 already, so the top move classifies as "Best"; just
+        # make sure a move that is *not* the top pick never shows as "Best".
+        if label == "Best" and played != best:
             label, glyph = "Excellent", ""
 
         return {
-            "q": q, "mask": mask, "legal": legal,
+            "q": q, "mask": mask, "legal": legal, "ranked": [int(a) for a in ranked],
             "bot_best": best, "coach_best": int(coach_best),
             "takes_corner": takes_c, "gives_corner": gives_c, "big_loss": big_loss,
             "corner_risk": float(crisk),
@@ -372,22 +381,21 @@ class OthelloBot:
                         "winprob_black": wp_black, "winprob_stm": None, "moves": []}
             q, mask = self._q_values(board)
             legal = np.nonzero(mask)[0]
-            ranked = self._ranked_moves(board, q, legal)  # corner-aware order
-            v = float(q[ranked[0]])
-            wp_stm = _winprob(v)
-            wp_black = _eval_black(self, board)  # blended, for display
+            conts = self._coach_conts(board)
+            score_of = self._move_scores(board, q, conts) if conts else \
+                {int(a): _winprob(float(q[a])) for a in legal}
+            ranked = sorted(score_of, key=score_of.get, reverse=True)
+            wp_stm = _winprob(float(q[ranked[0]]))
+            wp_black = _eval_black(self, board)  # positional, for display
             moves = []
             for a in ranked:
                 risk = self._corner_risk(board, int(a))
-                wp = _winprob(float(q[a]))
-                score = (wp + _CORNER_RANK_BONUS) if risk < 0.0 \
-                    else (wp - _CORNER_RANK_PENALTY * risk)
                 moves.append({
                     "action": int(a),
                     "san": _san(a),
                     "value": float(q[a]),
-                    "winprob": wp,
-                    "score": score,
+                    "winprob": _winprob(float(q[a])),
+                    "score": float(score_of[a]),
                     "corner_risk": float(risk),
                     "gives_corner": risk >= _RISK_X_SQUARE,
                     "takes_corner": risk < 0.0,
@@ -410,7 +418,7 @@ class OthelloBot:
                     continue
                 g = self.grade_move(state, a)
                 q = g["q"]
-                ranked = self._ranked_moves(state, q, g["legal"])
+                ranked = g["ranked"]
                 best = g["bot_best"]
                 best_v, played_v = float(q[best]), float(q[a])
                 best_wp, played_wp = _winprob(best_v), _winprob(played_v)
@@ -477,7 +485,7 @@ class OthelloBot:
                     continue
                 g = self.grade_move(state, a)
                 q = g["q"]
-                ranked = self._ranked_moves(state, q, g["legal"])
+                ranked = g["ranked"]
                 best = g["bot_best"]
 
                 side = _side(state.player)

@@ -83,29 +83,32 @@ from all N saved games* (`scripts/finetune_from_games.py --learn both` offline).
 
 ### How a move is graded
 
-The small DQN's action-values sit within ~1% of each other in most positions and
-it is nearly blind to corners, so **corner safety is assessed directly** and used
-as a hard floor on a move's **regret**:
+Every legal move gets **one** combined quality score
+(`bot_service.py::_move_scores`):
 
 ```
-regret = max( 0.5·bot_drop + 0.5·coach_drop ,  0.6·coach_drop )   # DQN + 1-ply heuristic
-
-then, from _corner_risk(move):
-  opponent can then play into a corner   -> regret ≥ 0.55   (Blunder)
-  move sits on the X-square by an empty corner -> regret ≥ 0.42 (Blunder)
-  ... the C-square                        -> regret ≥ 0.26   (Mistake)
-  move takes a corner                     -> regret ≤ 0.02   (Best/Excellent)
-  leaves the mover losing badly (win-prob > 0.42 → < 0.24) -> regret ≥ 0.60
+score(move) = 0.5 · bot_win_prob(move)                       # the DQN
+            + 0.5 · (0.5 + 0.5·tanh(heuristic_1ply(move)/18))  # disc/mobility/edge/corner check
+            −       corner_penalty(move)                       # 0.6·corner_risk, or −0.15 for a corner take
 ```
 
-`regret` (0–1) → label via `_CLASS_TABLE`. **Best** = you played the engine's own
-corner-aware #1 move and it concedes no corner and doesn't lose the game (this
-matches the "✓ best" hint in the move list); a move that is *not* the #1 pick is
-never "Best".
+The **dashed best move**, the **"bot likes"** list and `GET /api/eval`
+(`moves[].score`, `moves[].corner_risk`) are all just this score, sorted — and a
+move's **regret** is `score(best) − score(move)`. So the move shown as best always
+grades **Best** (regret 0); it can never come back as `?!`.
 
-The move ranking (dashed best move, "bot likes", `GET /api/eval` `moves[].score`
-and `moves[].corner_risk`) uses the same corner-aware order, so the top suggestion
-never concedes — or sits next to — a corner.
+On top of that, corner risk and a big-loss check are hard floors on regret:
+
+```
+opponent can then play into a corner          -> regret ≥ 0.55   (Blunder)
+move sits on the X-square by an empty corner   -> regret ≥ 0.42   (Blunder)
+... the C-square                               -> regret ≥ 0.26   (Mistake)
+move takes a corner                            -> regret ≤ 0.02
+mover was fine (win-prob > 0.42) and is now losing badly (< 0.24) -> regret ≥ 0.60
+```
+
+`regret` (0–1) → label via `_CLASS_TABLE`. A move that is **not** the #1 pick is
+never labelled "Best".
 
 Fine-tuning is conservative about which moves it reinforces: the game outcome is
 always the base signal; an *extra* bonus/penalty is only added for taking vs
