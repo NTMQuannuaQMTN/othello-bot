@@ -112,13 +112,17 @@ The **dashed best move**, the **"bot likes"** list and `GET /api/eval`
 move list, the board legend and the status line.
 
 **Corner penalty** (folded straight into `EP`, so an X-square really does show
-fewer expected points):
+fewer expected points). An X/C-square move (b2/g2/b7/g7 etc.) is only penalised
+when the opponent can *actually* force the corner — checked with a short
+"can the opponent take this corner within one more exchange, even if I defend?"
+search (`_corner_forcible`) — not merely because the square is an X-square:
 
 ```
-opponent can then play into a corner           -> −0.32 EP
-move sits on the X-square by an empty corner    -> −0.24 EP
-... the C-square                                -> −0.11 EP
-move takes a corner                             -> +0.06 EP
+opponent can play straight into a corner now              -> −0.32 EP
+X-square move, opponent can force the corner              -> −0.24 EP
+C-square move, opponent can force the corner              -> −0.11 EP
+X-square move but the corner stays safe                   -> −0.04 EP  (loose only)
+move takes a corner                                       -> +0.06 EP
 ```
 
 Fine-tuning is conservative about which moves it reinforces: the game outcome is

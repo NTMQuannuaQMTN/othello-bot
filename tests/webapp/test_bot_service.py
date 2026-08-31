@@ -171,17 +171,26 @@ def test_corner_flags_detect_give_and_take():
     assert fl["takes_corner"] is False
 
 
-def test_x_square_next_to_empty_corner_is_a_blunder(bot):
+def test_x_square_is_a_blunder_only_when_it_actually_loses_the_corner(bot):
     from tests.environment.conftest import make_board
-    b = make_board(["........", "........", "..O.O...", "...X.X..",
-                    "........", "........", "........", "........"])
-    st = Board(b, BLACK)
-    assert {(1, 1), (1, 3)} <= set(st.legal_moves())   # b2 (X-square) vs d2 (safe)
-    g = bot.grade_move(st, 1 * 8 + 1)          # b2 — the X-square guarding empty a1
+    XSQ_B2 = 1 * 8 + 1
+
+    # b2 here lets the opponent force corner a1 -> Blunder, never suggested
+    loses = Board(make_board(["........", "........", "..X...O.", "..XXXOO.",
+                              ".XXXO.O.", "...XX...", "...X....", "........"]), WHITE)
+    assert (1, 1) in loses.legal_moves()
+    g = bot.grade_move(loses, XSQ_B2)
     assert g["corner_risk"] >= 0.7 and g["gives_corner"]
     assert g["ep_lost"] > 0.20 and g["label"] == "Blunder"
-    # ...and it is never the suggested move
-    assert bot.evaluate_position(st)["moves"][0]["action"] != 1 * 8 + 1
+    assert bot.evaluate_position(loses)["moves"][0]["action"] != XSQ_B2
+
+    # b2 here does NOT let the opponent reach a1 -> not a blunder
+    safe = Board(make_board(["........", "........", "..X.....", "...XXO..",
+                             "...XO...", "...XX...", "...X....", "........"]), WHITE)
+    assert (1, 1) in safe.legal_moves()
+    g2 = bot.grade_move(safe, XSQ_B2)
+    assert g2["corner_risk"] < 0.42 and not g2["gives_corner"]
+    assert g2["label"] != "Blunder"
 
 
 def test_playing_the_top_ranked_move_grades_best(bot):

@@ -95,10 +95,12 @@ def _corner_ep_penalty(risk: float) -> float:
         return -0.06
     if risk >= _RISK_OPP_TAKES:  # opponent can grab a corner next
         return 0.32
-    if risk >= _RISK_X_SQUARE:   # X-square next to an empty corner
+    if risk >= _RISK_X_SQUARE:   # X-square, opponent can force the corner
         return 0.24
-    if risk >= _RISK_C_SQUARE:   # C-square
+    if risk >= _RISK_C_SQUARE:   # C-square, opponent can force the corner
         return 0.11
+    if risk > 0.0:               # X-square but the corner is still safe: loose only
+        return 0.04
     return 0.0
 
 
@@ -244,14 +246,49 @@ class OthelloBot:
             out[r * 8 + c] = float(np.clip(v, -5e4, 5e4))
         return out
 
+    def _corner_forcible(self, board: Board, corner: Tuple[int, int],
+                         exchanges: int = 1) -> bool:
+        """True when the side to move on ``board`` can *force* taking ``corner``
+        within ``exchanges`` more (their-move, opponent-reply) pairs — i.e. even
+        with the opponent trying to stop them."""
+        if board.array[corner] != 0:
+            return False
+        ca = corner[0] * 8 + corner[1]
+        legal = board.legal_moves()
+        if any(r * 8 + c == ca for (r, c) in legal):
+            return True
+        if exchanges <= 0:
+            return False
+        taker = board.player
+        for tm in legal:                       # taker probes a move
+            nb = board.apply(tm)
+            if nb.array[corner] != 0:
+                continue
+            if nb.player == taker:              # opponent had to pass
+                if self._corner_forcible(nb, corner, exchanges):
+                    return True
+                continue
+            # opponent to move: the corner is forced iff every reply still loses it
+            replies = nb.legal_moves()
+            if replies and all(
+                    nb.apply(dm).array[corner] == 0
+                    and self._corner_forcible(nb.apply(dm), corner, exchanges - 1)
+                    for dm in replies):
+                return True
+        return False
+
     def _corner_risk(self, board: Board, action: int) -> float:
         """How much this move endangers a corner, in [-1, 1]:
 
-        * ``< 0``  the move *takes* a corner;
-        * ``0``    corner-neutral;
-        * ``0.42`` the move sits on a C-square next to a still-empty corner;
-        * ``0.70`` ... the X-square (diagonal) — worse;
-        * ``1.0``  after this move the opponent can play straight into a corner.
+        * ``< 0``   the move *takes* a corner;
+        * ``0``     corner-neutral (incl. an X/C-square move where the corner
+                    still can't be forced by the opponent);
+        * ``0.42``  a C-square move that lets the opponent force the corner;
+        * ``0.70``  ... an X-square (diagonal) move — worse;
+        * ``1.0``   the opponent can play straight into a corner right now.
+
+        An X/C-square move is only penalised when the opponent can *actually*
+        reach the corner — not merely because the square is an X-square.
         """
         if action == PASS_ACTION or not (0 <= action < 64):
             return 0.0
@@ -262,15 +299,22 @@ class OthelloBot:
             child = board.apply(rc)
         except Exception:  # pragma: no cover
             return 0.0
-        risk = 0.0
-        if not child.is_terminal() and child.player != board.player:
+        if child.is_terminal():
+            return 0.0
+        if child.player != board.player:
             opp_legal = {r * 8 + c for (r, c) in child.legal_moves()}
             if opp_legal & _CORNER_ACTIONS:
-                risk = _RISK_OPP_TAKES
+                return _RISK_OPP_TAKES
+
+        risk = 0.0
         for corner, adj in _CORNER_ADJ.items():
-            if rc in adj and child.array[corner] == 0:
-                is_x = abs(rc[0] - corner[0]) == 1 and abs(rc[1] - corner[1]) == 1
+            if rc not in adj or child.array[corner] != 0:
+                continue
+            is_x = abs(rc[0] - corner[0]) == 1 and abs(rc[1] - corner[1]) == 1
+            if child.player != board.player and self._corner_forcible(child, corner, 1):
                 risk = max(risk, _RISK_X_SQUARE if is_x else _RISK_C_SQUARE)
+            else:
+                risk = max(risk, 0.12 if is_x else 0.0)   # loose, but not losing it
         return risk
 
     def _corner_flags(self, board: Board, action: int) -> Tuple[bool, bool]:
