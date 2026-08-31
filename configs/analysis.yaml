@@ -1,0 +1,26 @@
+# Short-horizon counterfactual move analysis (Phase 12.3).
+# A ply is one move by one player: lookahead_plies: [3, 5] means 3 and 5
+# individual moves of look-ahead, NOT 3-5 full turns.
+#
+# This produces a HEURISTIC quality label per move (regret vs the best legal
+# alternative under a shallow negamax search with a static heuristic leaf). It is
+# a quality-control / weighting signal for training data, NOT an Othello oracle.
+
+lookahead_plies: [3, 5]
+
+alpha_beta: true              # negamax with alpha-beta pruning (same result as plain minimax)
+transposition_table: true     # exact-only cache (safe with alpha-beta)
+use_existing_heuristic: true  # agents/heuristic_agent.evaluate (mobility/corners/danger/discs/edges)
+max_alternatives: 0           # 0 = search every legal move; N = sample N (played move always kept)
+n_workers: 4                  # games are independent -> process pool
+
+# regret is in heuristic-eval units; regret_norm = tanh(max(0, regret) / evaluation_scale)
+evaluation_scale: 6.0
+
+# thresholds on regret_norm (0..1). <= best -> BEST, <= good -> GOOD, etc.;
+# anything above 'mistake' -> BLUNDER.
+move_quality:
+  best: 0.02
+  good: 0.06
+  acceptable: 0.15
+  mistake: 0.35

@@ -185,9 +185,16 @@ labeller, **not an oracle**.
       classify VALID/INVALID/INCOMPLETE/UNSUPPORTED, flag winner mismatch;
       `validation/`, `scripts/validate_games.py`, stats copied to `experiments/`;
       `tests/validation/test_validation.py` (9). (Engine auto-skips passes.)
-- [ ] 12.3 Short-horizon counterfactual analysis — shallow negamax+alpha-beta
-      (reuse `MinimaxAgent`), regret vs best legal alternative at horizons [3,5],
-      labels BEST/GOOD/ACCEPTABLE/MISTAKE/BLUNDER; `analysis/`, benchmark first
+- [x] 12.3 Short-horizon counterfactual analysis — `analysis/search.py` (shallow
+      negamax + alpha-beta + exact-only transposition table, reuses `MinimaxAgent`
+      ordering + `heuristic.evaluate`), `analysis/counterfactual.py`
+      (regret = best_alt − played, `tanh` norm, BEST/GOOD/ACCEPTABLE/MISTAKE/
+      BLUNDER), `analysis/pipeline.py` (+ process pool + `--benchmark`),
+      `configs/analysis.yaml`, `scripts/analyze_games.py`,
+      `docs/historical-training.md` (eval scale + oracle disclaimer + perf table);
+      `tests/analysis/` (15): search==minimax, AB picks same move, TT exact,
+      perspective, forced-pass path, regret arithmetic, horizon matters, sampling
+      determinism, pipeline/benchmark
 - [ ] 12.4 Versioned datasets + game-level train/val/test split (no leakage);
       strategies all / quality-filtered / weighted; `datasets/`
 - [ ] 12.5 Policy(+value) net (`rl/az_network.py`) + supervised imitation
