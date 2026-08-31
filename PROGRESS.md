@@ -8,6 +8,26 @@ Phases 1–11 complete and validated. Full spec audit done (see AUDIT below):
 (`scripts/eval_bot.py` standard protocol incl. Minimax; resumable self-play).
 Phase 11: persistent model & checkpoint management.
 
+## Phase 13 — Egaroucid for Console evaluation (2026-08-31)
+
+`scripts/play_egaroucid.py` plays the production model against a locally-built
+**Egaroucid for Console 7.8.1** (macOS ARM64) over **GTP** on stdin/stdout.
+Bridge in `othello_rl/eval_external/` (`EgaroucidEngine` + `play_game`/`run_match`);
+our own engine referees legality / passing / termination, Egaroucid is asked only
+for its own moves (`genmove`). Model loaded once, `select_action` only (one masked
+forward pass — no search). Results in `results/egaroucid/`.
+
+- Baseline: `v001_curriculum_selfplay` **0 / 10** vs Egaroucid level 10
+  (colours alternated, 4 random opening plies) — avg disc diff **−60**, and 0/6
+  even at level 0. Consistent with the known ~0.08 vs Minimax-2.
+- **Speed (Step 8 answer):** RL inference **~0.5 ms/move** (max < 2 ms), <0.15 s
+  total for 10 games. The historical "5–6 min game" was the manual Othello Quest
+  workflow / the web app's 3–5-ply *analysis* search — never the model, and that
+  path is not used here.
+- Model architecture / weights / training data / config / production checkpoint
+  unchanged; only `eval_external/`, the script, `tests/eval_external/` (18) and
+  `results/egaroucid/` were added. Docs: `docs/egaroucid-eval.md`.
+
 ## Current task
 Phase 12 — historical-game supervised pretraining pipeline (see
 `docs/historical-training.md`, plan in `.claude/plans/`). **12.1–12.6 all done**
@@ -124,8 +144,9 @@ the empirical training results in `experiments/` stand.
 All results: `experiments/RESULTS.md`.
 
 ## Test status
-`python3 -m pytest` → **150 passed** (~30–40 s). +11 regression/feature tests
-this session (audit fixes + `eval_bot` + resumable self-play).
+`python3 -m pytest` → **248 passed** (~140 s). +18 this session for the
+Egaroucid GTP bridge (`tests/eval_external/`, incl. a real-engine game that
+skips when the executable is absent).
 
 Extra verification run this pass (ad-hoc scripts, not in the suite): all-agent-pair
 integration sweep with per-ply invariants; dihedral symmetry; RL-env reward-sign

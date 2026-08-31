@@ -1,0 +1,36 @@
+{
+  "matches": [
+    {
+      "timestamp": "2026-08-31T21:24:32",
+      "file": "match_20260831_212432.json",
+      "model_version": "v001_curriculum_selfplay",
+      "checkpoint": "/Users/qnrj/Code/othello-bot/checkpoints/production/best.pt",
+      "egaroucid_version": "7.8.1 macOS ARM64 Generic (Clang)",
+      "level": 10,
+      "games": 1,
+      "rl_wins": 0,
+      "egaroucid_wins": 1,
+      "draws": 0,
+      "win_rate": 0.0,
+      "mean_disc_diff": -62.0,
+      "inference_ms_mean": 0.6951376086956714,
+      "inference_ms_max": 2.1503330000003373
+    },
+    {
+      "timestamp": "2026-08-31T21:25:03",
+      "file": "match_20260831_212503.json",
+      "model_version": "v001_curriculum_selfplay",
+      "checkpoint": "/Users/qnrj/Code/othello-bot/checkpoints/production/best.pt",
+      "egaroucid_version": "7.8.1 macOS ARM64 Generic (Clang)",
+      "level": 10,
+      "games": 10,
+      "rl_wins": 0,
+      "egaroucid_wins": 10,
+      "draws": 0,
+      "win_rate": 0.0,
+      "mean_disc_diff": -60.0,
+      "inference_ms_mean": 0.46491688444436285,
+      "inference_ms_max": 1.6496660000004937
+    }
+  ]
+}

@@ -45,6 +45,7 @@ python3 scripts/eval_bot.py  --checkpoint models/othello_bot_v1.pt  # vs Random/
 python3 scripts/track.py     --run experiments/<run_dir>     # strength curves over checkpoints
 python3 scripts/play.py      --checkpoint models/othello_bot_v1.pt   # terminal game
 python3 scripts/serve.py     --config configs/webapp.yaml    # web app -> http://127.0.0.1:8000
+python3 scripts/play_egaroucid.py --games 10                 # production model vs local Egaroucid (GTP); see docs/egaroucid-eval.md
 ```
 
 ## Web app
@@ -89,9 +90,11 @@ src/othello_rl/
   evaluation/   tournament.py metrics.py elo.py harness.py tracking.py report.py
   utils/        config.py seed.py logging.py experiment.py plots.py progress.py
   webapp/       bot_service.py session.py moves.py server.py   (Python JSON API)
+  eval_external/ egaroucid.py match.py    (GTP bridge to Egaroucid for Console)
 web/            React + Vite front end (npm run dev / build)
 scripts/        train.py selfplay.py evaluate.py eval_bot.py track.py play.py
-                serve.py bot_cli.py finetune_from_games.py
+                serve.py bot_cli.py finetune_from_games.py play_egaroucid.py
 models/         othello_bot_v1.pt          # the bundled bot
+results/        egaroucid/                 # external-engine match logs
 tests/          mirrors src/
 ```

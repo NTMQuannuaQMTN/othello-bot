@@ -1,0 +1,779 @@
+{
+  "timestamp": "2026-08-31T21:24:32",
+  "model": {
+    "version": "v001_curriculum_selfplay",
+    "parent": null,
+    "checkpoint": "/Users/qnrj/Code/othello-bot/checkpoints/production/best.pt",
+    "checkpoint_origin": "registry (v001_curriculum_selfplay)",
+    "network": {
+      "channels": 32,
+      "blocks": 2,
+      "hidden": 96
+    },
+    "params": 409954,
+    "trained_env_steps": 120000
+  },
+  "egaroucid": {
+    "name": "Egaroucid for Console",
+    "version": "7.8.1 macOS ARM64 Generic (Clang)",
+    "protocol_version": "2.0",
+    "executable": "/Users/qnrj/Downloads/Egaroucid-console_v7.8.1/bin/Egaroucid_for_Console.out",
+    "level": 10,
+    "threads": 1,
+    "argv": [
+      "/Users/qnrj/Downloads/Egaroucid-console_v7.8.1/bin/Egaroucid_for_Console.out",
+      "-gtp",
+      "-level",
+      "10",
+      "-t",
+      "1",
+      "-hash",
+      "0"
+    ]
+  },
+  "config": {
+    "games": 1,
+    "level": 10,
+    "threads": 1,
+    "opening_plies": 4,
+    "seed": 20260831,
+    "book": true,
+    "start_color": "black"
+  },
+  "summary": {
+    "games": 1,
+    "rl_wins": 0,
+    "egaroucid_wins": 1,
+    "draws": 0,
+    "win_rate": 0.0,
+    "rl_mean_score": 0.0,
+    "mean_disc_diff": -62.0,
+    "rl_black_games": 1,
+    "rl_white_games": 0,
+    "rl_black_wins": 0,
+    "rl_white_wins": 0,
+    "inference_ms_mean": 0.6951376086956714,
+    "inference_ms_median": 0.6509169999997511,
+    "inference_ms_max": 2.1503330000003373,
+    "rl_total_think_s": 0.015988165000000443,
+    "total_wall_s": 2.826125
+  },
+  "games": [
+    {
+      "game_index": 1,
+      "rl_color": "black",
+      "egaroucid_color": "white",
+      "opening_plies": 4,
+      "moves": [
+        {
+          "ply": 0,
+          "player": "black",
+          "actor": "opening",
+          "san": "e6",
+          "action": 44,
+          "gtp": "E6",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 1,
+          "player": "white",
+          "actor": "opening",
+          "san": "f6",
+          "action": 45,
+          "gtp": "F6",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 2,
+          "player": "black",
+          "actor": "opening",
+          "san": "d3",
+          "action": 19,
+          "gtp": "D3",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 3,
+          "player": "white",
+          "actor": "opening",
+          "san": "c3",
+          "action": 18,
+          "gtp": "C3",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 4,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "c4",
+          "action": 26,
+          "gtp": "C4",
+          "pass": false,
+          "inference_s": 0.0021503330000003373
+        },
+        {
+          "ply": 5,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "d6",
+          "action": 43,
+          "gtp": "D6",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 6,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "f7",
+          "action": 53,
+          "gtp": "F7",
+          "pass": false,
+          "inference_s": 0.0006060410000001681
+        },
+        {
+          "ply": 7,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "e7",
+          "action": 52,
+          "gtp": "E7",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 8,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "e8",
+          "action": 60,
+          "gtp": "E8",
+          "pass": false,
+          "inference_s": 0.0007485830000000249
+        },
+        {
+          "ply": 9,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "c5",
+          "action": 34,
+          "gtp": "C5",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 10,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "b3",
+          "action": 17,
+          "gtp": "B3",
+          "pass": false,
+          "inference_s": 0.0005712080000002118
+        },
+        {
+          "ply": 11,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "f5",
+          "action": 37,
+          "gtp": "F5",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 12,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "f4",
+          "action": 29,
+          "gtp": "F4",
+          "pass": false,
+          "inference_s": 0.0005726659999991668
+        },
+        {
+          "ply": 13,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "e3",
+          "action": 20,
+          "gtp": "E3",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 14,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "b4",
+          "action": 25,
+          "gtp": "B4",
+          "pass": false,
+          "inference_s": 0.0007728340000001666
+        },
+        {
+          "ply": 15,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "g4",
+          "action": 30,
+          "gtp": "G4",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 16,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "h3",
+          "action": 23,
+          "gtp": "H3",
+          "pass": false,
+          "inference_s": 0.0008381249999995788
+        },
+        {
+          "ply": 17,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "g5",
+          "action": 38,
+          "gtp": "G5",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 18,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "h5",
+          "action": 39,
+          "gtp": "H5",
+          "pass": false,
+          "inference_s": 0.0007504999999996542
+        },
+        {
+          "ply": 19,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "c6",
+          "action": 42,
+          "gtp": "C6",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 20,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "d2",
+          "action": 11,
+          "gtp": "D2",
+          "pass": false,
+          "inference_s": 0.0005519579999999635
+        },
+        {
+          "ply": 21,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "f2",
+          "action": 13,
+          "gtp": "F2",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 22,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "f3",
+          "action": 21,
+          "gtp": "F3",
+          "pass": false,
+          "inference_s": 0.0007571249999998031
+        },
+        {
+          "ply": 23,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "d7",
+          "action": 51,
+          "gtp": "D7",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 24,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "c8",
+          "action": 58,
+          "gtp": "C8",
+          "pass": false,
+          "inference_s": 0.0006509169999997511
+        },
+        {
+          "ply": 25,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "g3",
+          "action": 22,
+          "gtp": "G3",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 26,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "b5",
+          "action": 33,
+          "gtp": "B5",
+          "pass": false,
+          "inference_s": 0.0007738340000003063
+        },
+        {
+          "ply": 27,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "h4",
+          "action": 31,
+          "gtp": "H4",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 28,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "f1",
+          "action": 5,
+          "gtp": "F1",
+          "pass": false,
+          "inference_s": 0.0009003749999996202
+        },
+        {
+          "ply": 29,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "h6",
+          "action": 47,
+          "gtp": "H6",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 30,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "h7",
+          "action": 55,
+          "gtp": "H7",
+          "pass": false,
+          "inference_s": 0.0007762080000004445
+        },
+        {
+          "ply": 31,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "g6",
+          "action": 46,
+          "gtp": "G6",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 32,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "g7",
+          "action": 54,
+          "gtp": "G7",
+          "pass": false,
+          "inference_s": 0.0007747499999997132
+        },
+        {
+          "ply": 33,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "a4",
+          "action": 24,
+          "gtp": "A4",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 34,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "a3",
+          "action": 16,
+          "gtp": "A3",
+          "pass": false,
+          "inference_s": 0.0007264590000000126
+        },
+        {
+          "ply": 35,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "h8",
+          "action": 63,
+          "gtp": "H8",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 36,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "a5",
+          "action": 32,
+          "gtp": "A5",
+          "pass": false,
+          "inference_s": 0.0005802920000004264
+        },
+        {
+          "ply": 37,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "e1",
+          "action": 4,
+          "gtp": "E1",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 38,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "f8",
+          "action": 61,
+          "gtp": "F8",
+          "pass": false,
+          "inference_s": 0.0006433750000001126
+        },
+        {
+          "ply": 39,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "g1",
+          "action": 6,
+          "gtp": "G1",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 40,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "g2",
+          "action": 14,
+          "gtp": "G2",
+          "pass": false,
+          "inference_s": 0.0004353330000004263
+        },
+        {
+          "ply": 41,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "h1",
+          "action": 7,
+          "gtp": "H1",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 42,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "c7",
+          "action": 50,
+          "gtp": "C7",
+          "pass": false,
+          "inference_s": 0.0004192910000000438
+        },
+        {
+          "ply": 43,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "d8",
+          "action": 59,
+          "gtp": "D8",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 44,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "e2",
+          "action": 12,
+          "gtp": "E2",
+          "pass": false,
+          "inference_s": 0.00034150000000021663
+        },
+        {
+          "ply": 45,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "h2",
+          "action": 15,
+          "gtp": "H2",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 46,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "pass",
+          "action": 64,
+          "gtp": "pass",
+          "pass": true,
+          "inference_s": null
+        },
+        {
+          "ply": 47,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "g8",
+          "action": 62,
+          "gtp": "G8",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 48,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "pass",
+          "action": 64,
+          "gtp": "pass",
+          "pass": true,
+          "inference_s": null
+        },
+        {
+          "ply": 49,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "b8",
+          "action": 57,
+          "gtp": "B8",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 50,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "pass",
+          "action": 64,
+          "gtp": "pass",
+          "pass": true,
+          "inference_s": null
+        },
+        {
+          "ply": 51,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "c1",
+          "action": 2,
+          "gtp": "C1",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 52,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "c2",
+          "action": 10,
+          "gtp": "C2",
+          "pass": false,
+          "inference_s": 0.00033766600000006974
+        },
+        {
+          "ply": 53,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "d1",
+          "action": 3,
+          "gtp": "D1",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 54,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "pass",
+          "action": 64,
+          "gtp": "pass",
+          "pass": true,
+          "inference_s": null
+        },
+        {
+          "ply": 55,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "b7",
+          "action": 49,
+          "gtp": "B7",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 56,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "pass",
+          "action": 64,
+          "gtp": "pass",
+          "pass": true,
+          "inference_s": null
+        },
+        {
+          "ply": 57,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "b2",
+          "action": 9,
+          "gtp": "B2",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 58,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "b1",
+          "action": 1,
+          "gtp": "B1",
+          "pass": false,
+          "inference_s": 0.0003087920000002242
+        },
+        {
+          "ply": 59,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "a1",
+          "action": 0,
+          "gtp": "A1",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 60,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "pass",
+          "action": 64,
+          "gtp": "pass",
+          "pass": true,
+          "inference_s": null
+        },
+        {
+          "ply": 61,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "a2",
+          "action": 8,
+          "gtp": "A2",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 62,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "pass",
+          "action": 64,
+          "gtp": "pass",
+          "pass": true,
+          "inference_s": null
+        },
+        {
+          "ply": 63,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "b6",
+          "action": 41,
+          "gtp": "B6",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 64,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "pass",
+          "action": 64,
+          "gtp": "pass",
+          "pass": true,
+          "inference_s": null
+        },
+        {
+          "ply": 65,
+          "player": "white",
+          "actor": "Egaroucid",
+          "san": "a6",
+          "action": 40,
+          "gtp": "A6",
+          "pass": false,
+          "inference_s": null
+        },
+        {
+          "ply": 66,
+          "player": "black",
+          "actor": "RL Bot",
+          "san": "pass",
+          "action": 64,
+          "gtp": "pass",
+          "pass": true,
+          "inference_s": null
+        }
+      ],
+      "transcript": "e6 f6 d3 c3 c4 d6 f7 e7 e8 c5 b3 f5 f4 e3 b4 g4 h3 g5 h5 c6 d2 f2 f3 d7 c8 g3 b5 h4 f1 h6 h7 g6 g7 a4 a3 h8 a5 e1 f8 g1 g2 h1 c7 d8 e2 h2 g8 b8 c1 c2 d1 b7 b2 b1 a1 a2 b6 a6",
+      "winner": "white",
+      "result": "egaroucid_win",
+      "score_black": 0,
+      "score_white": 62,
+      "rl_score": 0,
+      "egaroucid_score": 62,
+      "disc_diff": -62,
+      "n_moves": 67,
+      "n_passes": 9,
+      "rl_inference_times": [
+        0.0021503330000003373,
+        0.0006060410000001681,
+        0.0007485830000000249,
+        0.0005712080000002118,
+        0.0005726659999991668,
+        0.0007728340000001666,
+        0.0008381249999995788,
+        0.0007504999999996542,
+        0.0005519579999999635,
+        0.0007571249999998031,
+        0.0006509169999997511,
+        0.0007738340000003063,
+        0.0009003749999996202,
+        0.0007762080000004445,
+        0.0007747499999997132,
+        0.0007264590000000126,
+        0.0005802920000004264,
+        0.0006433750000001126,
+        0.0004353330000004263,
+        0.0004192910000000438,
+        0.00034150000000021663,
+        0.00033766600000006974,
+        0.0003087920000002242
+      ],
+      "egaroucid_result": "White wins by 64 points. Final score is B 0 and W 62",
+      "egaroucid_agrees": true,
+      "error": null
+    }
+  ]
+}

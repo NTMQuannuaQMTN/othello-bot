@@ -217,3 +217,27 @@ labeller, **not an oracle**.
       `scripts/iterate.py` (subprocess orchestrator, `--dry-run`/`--from`/`--to`),
       `configs/iterate.yaml`; `tests/rl/test_iterate_and_tracking.py` (7)
 - [ ] (deferred) AZ-MCTS self-play — `docs/alphazero-plan.md` (the RL half of the loop)
+
+## Phase 13 — External-engine evaluation: Egaroucid for Console
+
+- [x] `othello_rl/eval_external/` — evaluation-only bridge to a local
+      **Egaroucid for Console 7.8.1** (built from source, macOS ARM64):
+      `egaroucid.py` (`EgaroucidEngine`: GTP subprocess over stdin/stdout —
+      `clear_board` / `play` / `genmove` / `gogui-rules_final_result`; coord
+      conversions; auto-discovery + build hint) and `match.py`
+      (`play_game` / `run_match`: our engine referees legality/passing/
+      termination, per-move RL inference timing, `assert move in legal_moves`,
+      forced-pass logging + counting, replayable `transcript`, Egaroucid-vs-our
+      -engine verdict cross-check).
+- [x] `scripts/play_egaroucid.py` — loads the production model **once**
+      (registry-resolved, never a random net), prints version + checkpoint,
+      one debug game or an N-game colour-alternating match; writes
+      `results/egaroucid/match_*.json` + `summary.json`.
+- [x] `docs/egaroucid-eval.md` (protocol, build command, the exact run command,
+      baseline result, the speed finding).
+- [x] `tests/eval_external/test_egaroucid_bridge.py` (18): coord round-trips,
+      GTP parser, fake-engine game loop (both colours), forced-pass logging,
+      illegal-RL-move abort, colour alternation, + a real-engine game when the
+      executable is present. Model/weights/training config unchanged.
+      Baseline: v001_curriculum_selfplay 0/10 vs Egaroucid level 10
+      (avg −60 discs); RL inference ~0.5 ms/move.
