@@ -44,36 +44,37 @@ from othello_rl.rl.agent import DQNAgent, NetworkConfig
 from othello_rl.rl.replay_buffer import ReplayBuffer
 
 # --------------------------------------------------------------------------- #
-# Move-quality classification (Lichess-style)
+# Move-quality classification — chess.com "Expected Points" model
 # --------------------------------------------------------------------------- #
-#: (max value-drop vs the best move, label, glyph). "drop" is in win-probability
-#: points (0..1); the bot's action-values are mapped q -> (q+1)/2.
+#: A move is graded purely by **expected points lost**: EP(best move) − EP(played
+#: move), where EP is the mover's win probability after the move (1 = winning,
+#: 0.5 = even, 0 = losing). Cutoffs from chess.com's published table; "Best" is
+#: reserved for losing (essentially) nothing, i.e. you played the top move.
 _CLASS_TABLE: List[Tuple[float, str, str]] = [
-    (0.030, "Best", ""),
-    (0.070, "Excellent", ""),
-    (0.130, "Good", ""),
-    (0.220, "Inaccuracy", "?!"),
-    (0.380, "Mistake", "?"),
-    (1.001, "Blunder", "??"),
+    (1e-6, "Best", ""),        # 0.00 expected points lost
+    (0.02, "Excellent", ""),   # (0.00, 0.02]
+    (0.05, "Good", ""),        # (0.02, 0.05]
+    (0.10, "Inaccuracy", "?!"),  # (0.05, 0.10]
+    (0.20, "Mistake", "?"),    # (0.10, 0.20]
+    (1.001, "Blunder", "??"),  # (0.20, 1.00]
 ]
 
 
-def classify_drop(combined_regret: float) -> Tuple[str, str]:
+def classify_drop(expected_points_lost: float) -> Tuple[str, str]:
     for threshold, label, glyph in _CLASS_TABLE:
-        if combined_regret < threshold:
+        if expected_points_lost < threshold:
             return label, glyph
     return "Blunder", "??"
 
 
-#: how much the bot's own value vs a shallow positional check each count toward
-#: a move's "regret" (the number the classification table reads).
-_BOT_WEIGHT = 0.5
-_COACH_WEIGHT = 0.5
+#: small nudge from the bot's own (noisy) value on top of the positional EP
+_BOT_EP_WEIGHT = 0.2
 _COACH_SCALE = 18.0  # heuristic-value units -> tanh -> [0, 1)
 
-#: Corners dominate Othello and the small DQN is nearly blind to them (its
-#: action-values sit within ~1% of each other in most positions), so corner
-#: safety is assessed directly and used as a hard floor on a move's regret.
+#: Corners dominate Othello and the small DQN is nearly blind to them, so corner
+#: safety is assessed directly and folded into a move's expected points — an
+#: X-square move genuinely shows fewer expected points, so it grades badly *and*
+#: is never the suggested best move.
 _CORNER_RC = ((0, 0), (0, 7), (7, 0), (7, 7))
 _CORNER_ACTIONS = frozenset(r * 8 + c for (r, c) in _CORNER_RC)
 #: the C- and X-squares guarding each corner (orthogonal neighbours + the diagonal)
@@ -83,19 +84,22 @@ _CORNER_ADJ = {
     (7, 0): {(7, 1), (6, 0), (6, 1)},
     (7, 7): {(7, 6), (6, 7), (6, 6)},
 }
-#: corner-risk (from ``_corner_risk``) -> regret floor
 _RISK_OPP_TAKES = 1.0      # opponent can play straight into a corner after this move
 _RISK_X_SQUARE = 0.70      # this move sits on the X-square by a still-empty corner
 _RISK_C_SQUARE = 0.42      # ... the C-square
-_REGRET_OPP_TAKES = 0.55   # -> Blunder
-_REGRET_X_SQUARE = 0.42    # -> Blunder
-_REGRET_C_SQUARE = 0.26    # -> Mistake
-_TAKES_CORNER_REGRET = 0.02
-_CORNER_RANK_PENALTY = 0.60   # win-prob points removed from a risky move when ranking
-_CORNER_RANK_BONUS = 0.15     # ... added to a corner take
-#: a move is a Blunder if the mover was fine (> this) and is now losing badly (< the next)
-_BIGLOSS_BEFORE = 0.42
-_BIGLOSS_AFTER = 0.24
+
+
+def _corner_ep_penalty(risk: float) -> float:
+    """Expected points a move gives up purely from corner danger."""
+    if risk < 0.0:               # takes a corner
+        return -0.06
+    if risk >= _RISK_OPP_TAKES:  # opponent can grab a corner next
+        return 0.32
+    if risk >= _RISK_X_SQUARE:   # X-square next to an empty corner
+        return 0.24
+    if risk >= _RISK_C_SQUARE:   # C-square
+        return 0.11
+    return 0.0
 
 
 def _winprob(value: float) -> float:
@@ -274,33 +278,8 @@ class OthelloBot:
         risk = self._corner_risk(board, action)
         return risk < 0.0, risk >= _RISK_X_SQUARE
 
-    def _move_scores(self, board: Board, q: np.ndarray,
-                     conts: Dict[int, float]) -> Dict[int, float]:
-        """Combined quality score per legal move (higher = better): the bot's
-        win-prob and the 1-ply heuristic — both mapped to [0, 1] — blended, minus
-        a corner-risk penalty. Move grading, the dashed best move and "bot likes"
-        all read *this one* number, so they can never disagree (a move shown as
-        best always grades "Best")."""
-        out: Dict[int, float] = {}
-        for a, cont in conts.items():
-            bot_wp = _winprob(float(q[a]))
-            coach_wp = 0.5 + 0.5 * float(np.tanh(cont / _COACH_SCALE))
-            risk = self._corner_risk(board, int(a))
-            adj = -_CORNER_RANK_BONUS if risk < 0.0 else _CORNER_RANK_PENALTY * risk
-            out[int(a)] = _BOT_WEIGHT * bot_wp + _COACH_WEIGHT * coach_wp - adj
-        return out
-
-    def _ranked_moves(self, board: Board, q: np.ndarray, legal) -> List[int]:
-        """Legal moves ordered by :meth:`_move_scores` (falls back to raw win-prob
-        only for a forced-pass position, where there are no continuations)."""
-        conts = self._coach_conts(board)
-        if not conts:
-            return sorted((int(a) for a in legal), key=lambda a: -q[a])
-        scores = self._move_scores(board, q, conts)
-        return sorted(scores, key=scores.get, reverse=True)
-
     def _mover_winprob(self, board: Board) -> float:
-        """Blended win-prob for the side to move (0..1), for big-loss detection."""
+        """Positional win probability for the side to move (0..1)."""
         if board.is_terminal():
             w = board.winner()
             if w == 0:
@@ -309,70 +288,98 @@ class OthelloBot:
         eb = _eval_black(self, board)
         return eb if board.player == BLACK else 1.0 - eb
 
+    def _expected_points(self, board: Board, q: np.ndarray,
+                         conts: Dict[int, float]) -> Dict[int, float]:
+        """``{action: the mover's expected points (win prob, 0..1) after it}``.
+
+        This one number drives everything — the grade (EP lost = EP(best) −
+        EP(played), chess.com's model), the "bot likes" order and the dashed best
+        move — so they can never disagree. Corner danger is folded straight in, so
+        an X-square move really does show fewer expected points.
+        """
+        mover = board.player
+        out: Dict[int, float] = {}
+        for a in conts:
+            a = int(a)
+            try:
+                child = board.apply(action_to_rc(a))
+            except Exception:  # pragma: no cover
+                continue
+            if child.is_terminal():
+                w = child.winner()
+                base = 1.0 if w == mover else (0.5 if w == 0 else 0.0)
+            else:
+                m = self._mover_winprob(child)          # positional, child's mover
+                base = m if child.player == mover else 1.0 - m
+                base = (1.0 - _BOT_EP_WEIGHT) * base + _BOT_EP_WEIGHT * _winprob(float(q[a]))
+            base -= _corner_ep_penalty(self._corner_risk(board, a))
+            out[a] = float(np.clip(base, 0.0, 1.0))
+        return out
+
+    def _ranked_moves(self, board: Board, q: np.ndarray, legal) -> List[int]:
+        """Legal moves ordered by expected points (falls back to raw win-prob only
+        for a forced-pass position, where there are no continuations)."""
+        conts = self._coach_conts(board)
+        if not conts:
+            return sorted((int(a) for a in legal), key=lambda a: -q[a])
+        ep = self._expected_points(board, q, conts)
+        return sorted(ep, key=ep.get, reverse=True)
+
     def grade_move(self, board: Board, played: int) -> dict:
-        """Grade one move. Regret is measured against the single combined score
-        from :meth:`_move_scores`, so the engine's own #1 move always has regret 0
-        (label "Best"); corner concessions and big losses add a hard floor."""
+        """Grade one move by **expected points lost** vs the best move
+        (chess.com's model): 0 lost -> Best, then Excellent / Good / Inaccuracy /
+        Mistake / Blunder per ``_CLASS_TABLE``. Corner danger is already inside
+        the expected-points number, so there is no separate override."""
         q, mask = self._q_values(board)
         legal = np.nonzero(mask)[0]
         played = int(played)
         conts = self._coach_conts(board)
-        scores = self._move_scores(board, q, conts) if conts else {}
+        ep = self._expected_points(board, q, conts) if conts else {}
 
-        if scores:
-            ranked = sorted(scores, key=scores.get, reverse=True)
+        if ep:
+            ranked = sorted(ep, key=ep.get, reverse=True)
             best = ranked[0]
-            regret = max(0.0, scores[best] - scores.get(played, scores[best]))
+            best_ep = ep[best]
+            played_ep = ep.get(played, best_ep)
+            ep_lost = max(0.0, best_ep - played_ep)
         else:  # forced pass — nothing to grade against
             ranked = sorted((int(a) for a in legal), key=lambda a: -q[a])
-            best, regret = (ranked[0] if ranked else PASS_ACTION), 0.0
+            best = ranked[0] if ranked else PASS_ACTION
+            best_ep = played_ep = self._mover_winprob(board)
+            ep_lost = 0.0
+
         coach_best = max(conts, key=conts.get) if conts else best
         coach_drop = (float(np.tanh(max(0.0, conts[coach_best] - conts.get(played, conts[coach_best]))
                                     / _COACH_SCALE)) if conts else 0.0)
         bot_drop = max(0.0, _winprob(float(q[best])) - _winprob(float(q[played]))) \
-            if played in range(64) else 0.0
+            if 0 <= played < 64 else 0.0
 
         crisk = self._corner_risk(board, played)
         takes_c = crisk < 0.0
         gives_c = crisk >= _RISK_X_SQUARE
-        big_loss = False
-        try:
-            before = self._mover_winprob(board)
-            after = self._mover_winprob(board.apply(
-                None if played == PASS_ACTION else action_to_rc(played)))
-            big_loss = before > _BIGLOSS_BEFORE and after < _BIGLOSS_AFTER
-        except Exception:  # pragma: no cover
-            pass
+        # "big loss" for the fine-tuner: this move (not the best) drops into a
+        # losing position that best play would have held.
+        big_loss = played != best and played_ep < 0.25 and best_ep > 0.4
 
-        if crisk >= _RISK_OPP_TAKES:
-            regret = max(regret, _REGRET_OPP_TAKES)
-        elif crisk >= _RISK_X_SQUARE:
-            regret = max(regret, _REGRET_X_SQUARE)
-        elif crisk >= _RISK_C_SQUARE:
-            regret = max(regret, _REGRET_C_SQUARE)
-        elif takes_c:
-            regret = min(regret, _TAKES_CORNER_REGRET)
-        if big_loss:
-            regret = max(regret, _REGRET_OPP_TAKES + 0.05)
-
-        label, glyph = classify_drop(regret)
-        # regret(best) == 0 already, so the top move classifies as "Best"; just
-        # make sure a move that is *not* the top pick never shows as "Best".
+        label, glyph = classify_drop(ep_lost)
         if label == "Best" and played != best:
             label, glyph = "Excellent", ""
 
         return {
             "q": q, "mask": mask, "legal": legal, "ranked": [int(a) for a in ranked],
             "bot_best": best, "coach_best": int(coach_best),
+            "ep": {int(k): float(v) for k, v in ep.items()},
+            "played_ep": float(played_ep), "best_ep": float(best_ep),
+            "ep_lost": float(ep_lost),
             "takes_corner": takes_c, "gives_corner": gives_c, "big_loss": big_loss,
             "corner_risk": float(crisk),
-            "bot_drop": bot_drop, "coach_drop": coach_drop, "regret": regret,
+            "bot_drop": bot_drop, "coach_drop": coach_drop, "regret": float(ep_lost),
             "label": label, "glyph": glyph,
         }
 
     def evaluate_position(self, board: Board) -> dict:
-        """Bot's read of a position: win prob for the side to move / for black,
-        plus the ranked legal moves."""
+        """Bot's read of a position: expected points (win prob) for the side to
+        move and for Black, plus the legal moves ranked by expected points."""
         with self._lock:
             if board.is_terminal():
                 w = board.winner()
@@ -382,11 +389,11 @@ class OthelloBot:
             q, mask = self._q_values(board)
             legal = np.nonzero(mask)[0]
             conts = self._coach_conts(board)
-            score_of = self._move_scores(board, q, conts) if conts else \
+            ep = self._expected_points(board, q, conts) if conts else \
                 {int(a): _winprob(float(q[a])) for a in legal}
-            ranked = sorted(score_of, key=score_of.get, reverse=True)
-            wp_stm = _winprob(float(q[ranked[0]]))
-            wp_black = _eval_black(self, board)  # positional, for display
+            ranked = sorted(ep, key=ep.get, reverse=True)
+            wp_stm = float(ep[ranked[0]])
+            wp_black = _eval_black(self, board)  # positional, for the graph
             moves = []
             for a in ranked:
                 risk = self._corner_risk(board, int(a))
@@ -394,8 +401,9 @@ class OthelloBot:
                     "action": int(a),
                     "san": _san(a),
                     "value": float(q[a]),
-                    "winprob": _winprob(float(q[a])),
-                    "score": float(score_of[a]),
+                    "winprob": float(ep[a]),          # expected points after this move
+                    "score": float(ep[a]),
+                    "ep_lost": float(max(0.0, ep[ranked[0]] - ep[a])),
                     "corner_risk": float(risk),
                     "gives_corner": risk >= _RISK_X_SQUARE,
                     "takes_corner": risk < 0.0,
@@ -420,22 +428,23 @@ class OthelloBot:
                 q = g["q"]
                 ranked = g["ranked"]
                 best = g["bot_best"]
-                best_v, played_v = float(q[best]), float(q[a])
-                best_wp, played_wp = _winprob(best_v), _winprob(played_v)
-                drop = g["regret"]
+                ep = g["ep"]
+                best_wp, played_wp = g["best_ep"], g["played_ep"]
+                drop = g["ep_lost"]
                 label, glyph = g["label"], g["glyph"]
                 nxt = state.apply(a)
-                # eval-for-black after the move = bot's read of the resulting position
                 eval_black = _eval_black(self, nxt)
                 out.append(MoveAnalysis(
                     ply=ply, side=_side(state.player), played=a, played_san=_san(a),
-                    played_value=played_v, played_winprob=played_wp,
-                    best=best, best_san=_san(best), best_value=best_v, best_winprob=best_wp,
+                    played_value=float(q[a]), played_winprob=played_wp,
+                    best=best, best_san=_san(best), best_value=float(q[best]),
+                    best_winprob=best_wp,
                     coach_best_san=_san(g["coach_best"]),
                     bot_drop=g["bot_drop"], coach_drop=g["coach_drop"],
                     drop=drop, label=label, glyph=glyph, eval_after_black=eval_black,
                     top_moves=[{"action": int(x), "san": _san(int(x)),
-                                "value": float(q[x]), "winprob": _winprob(float(q[x]))}
+                                "value": float(q[x]),
+                                "winprob": float(ep.get(int(x), _winprob(float(q[x]))))}
                                for x in ranked[:top_k]],
                 ))
                 state = nxt
@@ -503,17 +512,19 @@ class OthelloBot:
                 nxt = state.apply(a)
                 pos = self._position_payload(nxt)
                 positions.append(pos)
+                ep = g["ep"]
                 plies.append(MoveAnalysis(
                     ply=ply, side=_side(state.player), played=a, played_san=_san(a),
-                    played_value=float(q[a]), played_winprob=_winprob(float(q[a])),
+                    played_value=float(q[a]), played_winprob=g["played_ep"],
                     best=int(best), best_san=_san(int(best)),
-                    best_value=float(q[best]), best_winprob=_winprob(float(q[best])),
+                    best_value=float(q[best]), best_winprob=g["best_ep"],
                     coach_best_san=_san(g["coach_best"]),
                     bot_drop=g["bot_drop"], coach_drop=g["coach_drop"],
-                    drop=g["regret"], label=g["label"], glyph=g["glyph"],
+                    drop=g["ep_lost"], label=g["label"], glyph=g["glyph"],
                     eval_after_black=pos["eval"]["winprob_black"],
                     top_moves=[{"action": int(x), "san": _san(int(x)),
-                                "value": float(q[x]), "winprob": _winprob(float(q[x]))}
+                                "value": float(q[x]),
+                                "winprob": float(ep.get(int(x), _winprob(float(q[x]))))}
                                for x in ranked[:top_k]],
                 ))
                 state = nxt

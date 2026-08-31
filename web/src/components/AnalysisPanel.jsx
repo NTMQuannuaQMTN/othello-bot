@@ -140,10 +140,13 @@ export default function AnalysisPanel({ loadLine, onBotChanged }) {
         status={status}
         footer={!pos.terminal && engineMoves.length > 0 && (
           <div className="board-legend">
-            <span><i className="lg-best" /> best move
-              {` — ${engineMoves[0].san} (${Math.round(engineMoves[0].winprob * 100)}%)`}</span>
-            {ply && ply.played !== engineMoves[0].action &&
-              <span><i className="lg-last" /> you played {ply.played_san}</span>}
+            <span><i className="lg-best" /> best {engineMoves[0].san}{" "}
+              {pct(engineMoves[0].winprob)} win</span>
+            {ply && ply.played !== engineMoves[0].action && (
+              <span><i className="lg-last" /> you played {ply.played_san}{" "}
+                {pct(ply.played_winprob)} win
+                {ply.drop > 0.001 && <b> (−{Math.round(ply.drop * 100)})</b>}</span>
+            )}
           </div>
         )}
       />
@@ -238,12 +241,12 @@ export default function AnalysisPanel({ loadLine, onBotChanged }) {
 
         <MoveList
           items={data.plies.map((p) => {
-            // always show the best move that was available at that ply
-            let note = "";
-            if (p.best_san === p.played_san) note = "✓ best";
-            else if (p.label === "Best" || p.label === "Excellent")
-              note = `best ${p.best_san}`;
-            else note = `best ${p.best_san} · −${Math.round(p.drop * 100)}`;
+            // win% for the mover after the move played, and the best alternative
+            const w = pct(p.played_winprob);
+            let note;
+            if (p.best_san === p.played_san) note = `${w} win · ✓ best`;
+            else note = `${w} win · best ${p.best_san} ${pct(p.best_winprob)}` +
+              (p.drop > 0.001 ? ` (−${Math.round(p.drop * 100)})` : "");
             return {
               n: p.ply + 1, side: p.side, san: p.played_san, note,
               right: p.glyph || p.label, rightClass: "label " + p.label,
@@ -258,6 +261,10 @@ export default function AnalysisPanel({ loadLine, onBotChanged }) {
   );
 }
 
+function pct(p) {
+  return `${Math.round((p ?? 0.5) * 100)}%`;
+}
+
 function statusLine(pos, ply, engineMoves) {
   if (pos.terminal) {
     return pos.winner === "draw"
@@ -265,10 +272,13 @@ function statusLine(pos, ply, engineMoves) {
       : `Game over — ${pos.winner} wins ${pos.score.black}–${pos.score.white}.`;
   }
   const top = engineMoves.slice(0, 3)
-    .map((m) => `${m.san} ${Math.round(m.winprob * 100)}%`).join(", ");
+    .map((m) => `${m.san} ${pct(m.winprob)}`).join(", ");
   if (!ply) return `Starting position. Bot likes: ${top}`;
-  return `${ply.side} played ${ply.played_san} — ${ply.label}` +
-    (ply.best_san !== ply.played_san ? ` (best: ${ply.best_san})` : "") +
+  return `${ply.side} played ${ply.played_san} — ${ply.label} ` +
+    `(${pct(ply.played_winprob)} win` +
+    (ply.best_san !== ply.played_san
+      ? `, best ${ply.best_san} ${pct(ply.best_winprob)})`
+      : `)`) +
     `.  Now: ${top}`;
 }
 

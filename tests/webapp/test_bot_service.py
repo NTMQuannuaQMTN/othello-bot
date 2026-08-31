@@ -6,7 +6,6 @@ import pytest
 from othello_rl.environment.board import BLACK, WHITE, Board
 from othello_rl.rl.agent import DQNAgent, NetworkConfig
 from othello_rl.webapp.bot_service import (
-    _TAKES_CORNER_REGRET,
     FineTuneConfig,
     OthelloBot,
     classify_drop,
@@ -45,18 +44,21 @@ def test_select_action_always_legal(bot):
         s = s.apply(None if a == 64 else divmod(a, 8))
 
 
-def test_classify_monotone():
-    labels = [classify_drop(d)[0] for d in (0.0, 0.05, 0.10, 0.18, 0.30, 0.6)]
+def test_classify_expected_points_lost():
+    # chess.com Expected Points cutoffs: 0 | .02 | .05 | .10 | .20
+    labels = [classify_drop(d)[0] for d in (0.0, 0.01, 0.035, 0.07, 0.15, 0.4)]
     assert labels == ["Best", "Excellent", "Good", "Inaccuracy", "Mistake", "Blunder"]
+    assert classify_drop(0.0)[0] == "Best" and classify_drop(1e-4)[0] == "Excellent"
 
 
 def test_evaluate_position_shapes(bot):
     ev = bot.evaluate_position(Board.initial())
     assert 0.0 <= ev["winprob_black"] <= 1.0
     assert len(ev["moves"]) == 4
-    # ranked by the corner-aware blended score, not raw Q
-    assert ev["moves"] == sorted(ev["moves"], key=lambda m: -m["score"])
-    assert all("gives_corner" in m for m in ev["moves"])
+    # ranked by expected points (winprob after the move), best first
+    assert ev["moves"] == sorted(ev["moves"], key=lambda m: -m["winprob"])
+    assert ev["moves"][0]["ep_lost"] == 0.0
+    assert all("gives_corner" in m and "ep_lost" in m for m in ev["moves"])
     # terminal
     from tests.environment.conftest import make_board
     term = Board(make_board(["O" * 8] + ["." * 8] * 7), BLACK)
@@ -86,7 +88,7 @@ def test_analyse_line_navigation_payload(bot):
     assert p0["turn"] == "black" and not p0["terminal"]
     assert sorted(p0["legal_actions"]) == [19, 26, 37, 44]
     assert len(p0["eval"]["moves"]) == 4
-    assert p0["eval"]["moves"] == sorted(p0["eval"]["moves"], key=lambda m: -m["score"])
+    assert p0["eval"]["moves"] == sorted(p0["eval"]["moves"], key=lambda m: -m["winprob"])
 
     acts = parse_game("c4c3f5b4b3")
     d = bot.analyse_line(acts)
@@ -145,17 +147,14 @@ def test_analyse_flags_a_clear_mistake(bot):
     st = Board(b, BLACK)
     corner = bot.grade_move(st, 0)          # a1 (the corner)
     xsquare = bot.grade_move(st, 2 * 8 + 0)  # (2,0)
-    # the fast positional check should prefer the corner...
     assert corner["coach_best"] == 0
-    assert corner["coach_drop"] == pytest.approx(0.0, abs=1e-6)
-    # ...and the alternative should carry more regret and a worse label
-    assert xsquare["regret"] > corner["regret"]
+    # taking the corner has the most expected points -> 0 lost -> "Best"
+    assert corner["takes_corner"] and corner["bot_best"] == 0
+    assert corner["ep_lost"] == 0.0 and corner["label"] == "Best"
+    # the alternative gives up expected points and grades worse
+    assert xsquare["ep_lost"] > corner["ep_lost"]
     _order = ["Best", "Excellent", "Good", "Inaccuracy", "Mistake", "Blunder"]
     assert _order.index(xsquare["label"]) > _order.index(corner["label"])
-    # taking the corner is flagged and graded well (Best/Excellent), never worse
-    assert corner["takes_corner"]
-    assert corner["label"] in ("Best", "Excellent")
-    assert corner["regret"] <= _TAKES_CORNER_REGRET + 1e-9
 
 
 def test_corner_flags_detect_give_and_take():
@@ -180,7 +179,7 @@ def test_x_square_next_to_empty_corner_is_a_blunder(bot):
     assert {(1, 1), (1, 3)} <= set(st.legal_moves())   # b2 (X-square) vs d2 (safe)
     g = bot.grade_move(st, 1 * 8 + 1)          # b2 — the X-square guarding empty a1
     assert g["corner_risk"] >= 0.7 and g["gives_corner"]
-    assert g["label"] == "Blunder"
+    assert g["ep_lost"] > 0.20 and g["label"] == "Blunder"
     # ...and it is never the suggested move
     assert bot.evaluate_position(st)["moves"][0]["action"] != 1 * 8 + 1
 
@@ -201,8 +200,8 @@ def test_playing_the_top_ranked_move_grades_best(bot):
         s = s.apply(divmod(top["action"], 8))
     an = bot.analyse_line(acts)
     for ply in an["plies"]:
-        if ply["played"] == ply["best"] and ply["drop"] < 0.03:
-            assert ply["label"] == "Best"
+        if ply["played"] == ply["best"]:
+            assert ply["drop"] == 0.0 and ply["label"] == "Best"
             checked += 1
     assert checked >= 3
 

@@ -83,32 +83,43 @@ from all N saved games* (`scripts/finetune_from_games.py --learn both` offline).
 
 ### How a move is graded
 
-Every legal move gets **one** combined quality score
-(`bot_service.py::_move_scores`):
+Grading follows chess.com's **Expected Points** model. Every legal move gets an
+**expected-points** value `EP(move)` = the mover's win probability after playing
+it (1 = winning, 0.5 = even, 0 = losing), from `bot_service.py::_expected_points`:
 
 ```
-score(move) = 0.5 · bot_win_prob(move)                       # the DQN
-            + 0.5 · (0.5 + 0.5·tanh(heuristic_1ply(move)/18))  # disc/mobility/edge/corner check
-            −       corner_penalty(move)                       # 0.6·corner_risk, or −0.15 for a corner take
+EP(move) = 0.8 · positional_winprob(after move, mover's view)   # disc/mobility/edge/corner heuristic
+         + 0.2 · bot_win_prob(move)                             # the DQN's (noisy) opinion
+         −       corner_penalty(move)                           # see below
 ```
+
+A move is graded by **expected points lost** = `EP(best move) − EP(played move)`:
+
+| classification | expected points lost |
+|---|---|
+| Best | 0.00 |
+| Excellent | (0, 0.02] |
+| Good | (0.02, 0.05] |
+| Inaccuracy `?!` | (0.05, 0.10] |
+| Mistake `?` | (0.10, 0.20] |
+| Blunder `??` | (0.20, 1.00] |
 
 The **dashed best move**, the **"bot likes"** list and `GET /api/eval`
-(`moves[].score`, `moves[].corner_risk`) are all just this score, sorted — and a
-move's **regret** is `score(best) − score(move)`. So the move shown as best always
-grades **Best** (regret 0); it can never come back as `?!`.
+(`moves[].winprob` = EP, `moves[].ep_lost`, `moves[].corner_risk`) are all just
+`EP`, sorted. So the move shown as best has 0 expected points lost → always grades
+**Best**; it can never come back as `?!`. A move that is not the #1 pick is never
+"Best". Win probabilities for the played move and the best move are shown in the
+move list, the board legend and the status line.
 
-On top of that, corner risk and a big-loss check are hard floors on regret:
+**Corner penalty** (folded straight into `EP`, so an X-square really does show
+fewer expected points):
 
 ```
-opponent can then play into a corner          -> regret ≥ 0.55   (Blunder)
-move sits on the X-square by an empty corner   -> regret ≥ 0.42   (Blunder)
-... the C-square                               -> regret ≥ 0.26   (Mistake)
-move takes a corner                            -> regret ≤ 0.02
-mover was fine (win-prob > 0.42) and is now losing badly (< 0.24) -> regret ≥ 0.60
+opponent can then play into a corner           -> −0.32 EP
+move sits on the X-square by an empty corner    -> −0.24 EP
+... the C-square                                -> −0.11 EP
+move takes a corner                             -> +0.06 EP
 ```
-
-`regret` (0–1) → label via `_CLASS_TABLE`. A move that is **not** the #1 pick is
-never labelled "Best".
 
 Fine-tuning is conservative about which moves it reinforces: the game outcome is
 always the base signal; an *extra* bonus/penalty is only added for taking vs
@@ -211,7 +222,7 @@ Commands: `genmove <transcript>`, `eval <transcript>`, `name`, `quit`.
 | `POST /api/move` | `{action, bot_reply?}` | state after your move (+ the bot's reply unless `bot_reply:false`) |
 | `POST /api/bot_move` | `{}` | state after the bot moves (bot plays first / deferred reply) |
 | `GET /api/eval` | | the bot's read of the current game position |
-| `POST /api/analyse` | `{moves` \| `transcript` \| `history_actions}` | `positions[]`, `plies[]` (move grades), `eval_graph`, `summary`, `strategy` (per-side stats) |
+| `POST /api/analyse` | `{moves` \| `transcript` \| `history_actions}` | `positions[]` (each `.eval.moves[]` has `winprob`=EP, `ep_lost`, `corner_risk`), `plies[]` (`played_winprob`, `best_winprob`, `drop`=expected-points lost, `label`), `eval_graph`, `summary`, `strategy` |
 | `POST /api/finetune` | `{}` or `{moves, learn_color}` | fine-tune from a game, learning `learn_color`'s moves (default: the bot's side) |
 | `GET /api/games` | | `{count, path}` of saved games |
 | `POST /api/games` | `{moves` \| `transcript, human_color?, learn_color?}` | append a game to `data/games.jsonl` (dedup by move sequence) → `{saved, count, reason?}` |
