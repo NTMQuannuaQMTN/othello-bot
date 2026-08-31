@@ -22,7 +22,7 @@ Color = Union[int, str]  # BLACK, WHITE, or "random"
 class FixedOpponentEnv:
     def __init__(self, opponent: Union[str, Agent, List], learner_color: Color = "random",
                  illegal_move_mode: str = "raise", seed: Optional[int] = None,
-                 opening_plies: int = 0):
+                 opening_plies: int = 0, shaping=None):
         self._opponent_spec = opponent
         self.learner_color = learner_color
         self.opening_plies = int(opening_plies)
@@ -30,6 +30,8 @@ class FixedOpponentEnv:
         self._rng = random.Random(seed)
         self.opponent: Agent = self._make_opponent()
         self.learner_is: int = BLACK
+        #: optional potential-based corner-safety shaping (see rl/shaping.py)
+        self.shaping = shaping if (shaping is not None and getattr(shaping, "enabled", False)) else None
 
     def _make_opponent(self) -> Agent:
         spec = self._opponent_spec
@@ -73,6 +75,7 @@ class FixedOpponentEnv:
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
         assert self.env.state.player == self.learner_is, "not the learner's turn"
+        board_before = self.env.state.array.copy() if self.shaping else None
         obs, reward, terminated, truncated, info = self.env.step(action)
         # reward is from the learner's perspective (learner just moved)
         if not (terminated or truncated):
@@ -81,6 +84,10 @@ class FixedOpponentEnv:
                 terminated = True
                 reward = -opp_reward  # opponent's terminal reward, negated
                 truncated = truncated or info.get("_truncated", False)
+        if self.shaping is not None:
+            reward += self.shaping.delta(board_before, self.env.state.array,
+                                         self.learner_is,
+                                         done=bool(terminated or truncated))
         info = {**info, "learner_color": self.learner_is}
         return obs, reward, terminated, truncated, info
 

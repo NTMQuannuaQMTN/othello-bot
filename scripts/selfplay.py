@@ -18,6 +18,7 @@ if str(_SRC) not in sys.path:
 
 from othello_rl.rl.agent import DQNAgent, NetworkConfig  # noqa: E402
 from othello_rl.rl.self_play import OpponentPool, SelfPlayConfig, run_self_play  # noqa: E402
+from othello_rl.rl.shaping import CornerShaping  # noqa: E402
 from othello_rl.rl.trainer import DQNConfig  # noqa: E402
 from othello_rl.utils.config import dump_config, load_config  # noqa: E402
 from othello_rl.utils.experiment import create_run_dir, write_metadata  # noqa: E402
@@ -81,6 +82,8 @@ def main(argv=None) -> int:
         opening_plies=int(sp.get("opening_plies", 4)),
         pool=pool,
         dqn=DQNConfig(**cfg.get("dqn", {})),
+        shaping=CornerShaping.from_config(cfg.get("shaping"),
+                                         gamma=float(cfg.get("dqn", {}).get("gamma", 0.99))),
     )
 
     write_metadata(run_dir, dict(cfg), extra={"init_checkpoint": init_ckpt,

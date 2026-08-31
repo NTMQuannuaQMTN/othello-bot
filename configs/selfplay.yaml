@@ -26,6 +26,12 @@ dqn:
   epsilon_end: 0.05
   epsilon_decay_steps: 40000
 
+# potential-based corner-safety shaping (see configs/train.yaml / rl/shaping.py)
+shaping:
+  corner_weight: 0.20
+  x_square_weight: 0.12
+  c_square_weight: 0.04
+
 self_play:
   total_env_steps: 200000
   snapshot_every: 20000

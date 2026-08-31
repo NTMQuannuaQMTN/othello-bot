@@ -141,6 +141,7 @@ class SelfPlayConfig:
     opening_plies: int = 4
     pool: "OpponentPool" = field(default_factory=OpponentPool)
     dqn: "object" = None  # DQNConfig; imported lazily to avoid a cycle
+    shaping: "object" = None  # optional rl.shaping.CornerShaping
 
 
 def run_self_play(agent: DQNAgent, cfg: SelfPlayConfig, run_dir, seed: int = 0,
@@ -176,7 +177,7 @@ def run_self_play(agent: DQNAgent, cfg: SelfPlayConfig, run_dir, seed: int = 0,
         pool.add_snapshot(agent, tag="init")
 
     env = FixedOpponentEnv(pool, learner_color=cfg.learner_color, seed=seed,
-                           opening_plies=cfg.opening_plies)
+                           opening_plies=cfg.opening_plies, shaping=cfg.shaping)
     trainer = DQNTrainer(env, agent, dqn_cfg, seed=seed)
 
     baseline_opponents = {s: s for s in pool.baseline_specs}

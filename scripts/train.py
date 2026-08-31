@@ -18,6 +18,7 @@ if str(_SRC) not in sys.path:
 from othello_rl.rl.agent import DQNAgent, NetworkConfig  # noqa: E402
 from othello_rl.rl.checkpoint import resolve_checkpoint, restore_training  # noqa: E402
 from othello_rl.rl.curriculum import CurriculumConfig, Stage, run_curriculum  # noqa: E402
+from othello_rl.rl.shaping import CornerShaping  # noqa: E402
 from othello_rl.rl.trainer import DQNConfig  # noqa: E402
 from othello_rl.utils.config import dump_config, load_config  # noqa: E402
 from othello_rl.utils.experiment import create_run_dir, write_metadata  # noqa: E402
@@ -38,6 +39,7 @@ def build_curriculum(cfg, steps_scale: float, only_stages) -> CurriculumConfig:
             opening_plies=int(s.get("opening_plies", 4)),
         ))
     ev = cfg.get("eval", {})
+    dqn = DQNConfig(**cfg.get("dqn", {}))
     return CurriculumConfig(
         stages=stages,
         eval_opponents=dict(ev.get("opponents", {"random": "random"})),
@@ -45,7 +47,8 @@ def build_curriculum(cfg, steps_scale: float, only_stages) -> CurriculumConfig:
         eval_every=max(1, int(int(ev.get("every", 5000)) * steps_scale)),
         eval_seed=int(ev.get("seed", 12345)),
         checkpoint_every=max(1, int(int(cfg.get("checkpoint_every", 20000)) * steps_scale)),
-        dqn=DQNConfig(**cfg.get("dqn", {})),
+        dqn=dqn,
+        shaping=CornerShaping.from_config(cfg.get("shaping"), gamma=dqn.gamma),
     )
 
 

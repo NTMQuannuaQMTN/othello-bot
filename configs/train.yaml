@@ -36,6 +36,16 @@ eval:
 
 checkpoint_every: 30000
 
+# Potential-based corner-safety shaping (rl/shaping.py). The sparse ±1 reward
+# barely teaches the small net about corners; this adds dense feedback — Φ falls
+# when the learner sits on an X-square (b2/g2/b7/g7) next to an empty corner and
+# rises when it holds corners. Potential-based, so the optimal policy is
+# unchanged. Comment the block out (or set enabled: false) to train without it.
+shaping:
+  corner_weight: 0.20
+  x_square_weight: 0.12
+  c_square_weight: 0.04
+
 stages:
   - name: stage1_random
     opponent: random

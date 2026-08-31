@@ -35,6 +35,7 @@ class CurriculumConfig:
     eval_seed: int = 12345
     checkpoint_every: int = 10_000
     dqn: DQNConfig = field(default_factory=DQNConfig)
+    shaping: object = None  # optional rl.shaping.CornerShaping
 
 
 def _fmt_eval(flat: Dict[str, float]) -> str:
@@ -91,7 +92,8 @@ def run_curriculum(agent: DQNAgent, cfg: CurriculumConfig, run_dir: str | Path,
     for stage_idx, stage in enumerate(cfg.stages):
         env = FixedOpponentEnv(stage.opponent, learner_color=stage.learner_color,
                                seed=seed + 101 * (stage_idx + 1),
-                               opening_plies=stage.opening_plies)
+                               opening_plies=stage.opening_plies,
+                               shaping=cfg.shaping)
         if trainer is None:
             trainer = DQNTrainer(env, agent, cfg.dqn, seed=seed, resume_state=resume_state)
         else:
