@@ -90,8 +90,38 @@ Output: `data/processed/analyzed_games/<source>.jsonl`, one game per line, every
 move judged at every horizon (`by_horizon`). Stats (label distribution,
 positions/sec, config) → `experiments/<ts>_analyze_<source>/analysis.stats.json`.
 
+## Versioned training datasets (`scripts/build_dataset.py`)
+
+Analysed games -> `(position, played move, game outcome)` training examples.
+**Never train equally on every move** — a strong human still errs. Three
+configurable strategies (`configs/dataset.yaml::strategy`):
+
+| strategy | effect |
+|---|---|
+| `all` | every valid move, weight 1 (the baseline) |
+| `filtered` | keep only `filtered_keep` labels (BEST/GOOD/ACCEPTABLE by default) |
+| `weighted` | `label_weights` per label; BLUNDER → 0 (dropped) |
+
+`horizon` picks which analysis horizon's labels to use.
+
+**Splitting is at the game level** — `datasets/split.py::assign_split(game_id,
+ratios, seed)` is a pure hash of `(seed, game_id)`, so a game (and *every* one of
+its positions) is entirely in train, val or test. `build_dataset` asserts no
+`game_id` appears in more than one split. Split assignment is stable as the
+corpus grows.
+
+Each `TrainingExample` carries `data_kind` ∈ {`historical`, `self_play`,
+`engine_generated`} so historical and generated data stay distinguishable and can
+be mixed with metadata later.
+
+Output: `data/processed/training_data/<version>/{train,val,test}.npz`
+(`obs (N,3,8,8) f32`, `policy (N,)`, `value (N,)` ∈ {−1,0,1} from the mover's
+POV, `weight (N,)`, `label`, `data_kind`, `game_idx`, `game_ids`) + `manifest.json`
+(config, per-split counts, label/data-kind histograms, mean weight; copied to
+`experiments/<ts>_dataset_<version>/`). `<version>` = timestamp + config hash.
+
 ## Later stages
 
-12.4 datasets, 12.5 policy(+value) supervised pretraining, 12.6 evaluation /
-promotion / iterate loop — added as those phases land. The RL half of the loop
-(AZ-style MCTS self-play) is deferred to `docs/alphazero-plan.md`.
+12.5 policy(+value) supervised pretraining, 12.6 evaluation / promotion / iterate
+loop — added as those phases land. The RL half of the loop (AZ-style MCTS
+self-play) is deferred to `docs/alphazero-plan.md`.

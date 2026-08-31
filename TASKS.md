@@ -195,8 +195,11 @@ labeller, **not an oracle**.
       `tests/analysis/` (15): search==minimax, AB picks same move, TT exact,
       perspective, forced-pass path, regret arithmetic, horizon matters, sampling
       determinism, pipeline/benchmark
-- [ ] 12.4 Versioned datasets + game-level train/val/test split (no leakage);
-      strategies all / quality-filtered / weighted; `datasets/`
+- [x] 12.4 Versioned datasets — `datasets/split.py` (game-level, pure hash of
+      (seed, game_id), no leakage), `datasets/examples.py` (position -> obs +
+      played move + outcome z + label, data_kind kept), `datasets/build.py`
+      (strategies all / filtered / weighted; npz + manifest; leak assertion);
+      `configs/dataset.yaml`, `scripts/build_dataset.py`; `tests/datasets/` (7)
 - [ ] 12.5 Policy(+value) net (`rl/az_network.py`) + supervised imitation
       pretraining (`rl/supervised.py`, `scripts/pretrain.py`) — NOT RL
 - [ ] 12.6 Eval vs baselines + production + historical; config-driven promotion;

@@ -1,0 +1,22 @@
+# Build a versioned supervised-pretraining dataset from analysed games (Phase 12.4).
+
+strategy: weighted          # all | filtered | weighted
+horizon: 5                  # which analysis horizon's labels to use (plies)
+
+# strategy: weighted -> per-label sample weight (0 => dropped unless drop_zero_weight: false)
+label_weights:
+  BEST: 1.0
+  GOOD: 0.8
+  ACCEPTABLE: 0.5
+  MISTAKE: 0.15
+  BLUNDER: 0.0
+drop_zero_weight: true
+
+# strategy: filtered -> keep only these labels (weight 1)
+filtered_keep: [BEST, GOOD, ACCEPTABLE]
+
+# game-level split (every position of a game shares its split -> no leakage)
+split: {train: 0.8, val: 0.1, test: 0.1}
+split_seed: 20260901
+
+sources: [wthor]            # which analyzed_games/<source>.jsonl files to include
