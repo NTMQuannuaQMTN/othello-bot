@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -65,9 +66,16 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 EXPERIMENT_INDEX = _REPO_ROOT / "experiments" / "index.jsonl"
 
 
-def log_experiment(row: Dict[str, Any], path: str | Path = EXPERIMENT_INDEX) -> Path:
-    """Append one experiment record to ``experiments/index.jsonl`` (committed)."""
-    path = Path(path)
+def _index_path(path=None) -> Path:
+    if path is not None:
+        return Path(path)
+    return Path(os.environ.get("OTHELLO_EXPERIMENT_INDEX", EXPERIMENT_INDEX))
+
+
+def log_experiment(row: Dict[str, Any], path=None) -> Path:
+    """Append one experiment record to ``experiments/index.jsonl`` (committed).
+    ``$OTHELLO_EXPERIMENT_INDEX`` overrides the location (used in tests)."""
+    path = _index_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     entry = {"timestamp": datetime.now().isoformat(timespec="seconds"),
              "git_commit": git_commit(), **row}
@@ -76,8 +84,8 @@ def log_experiment(row: Dict[str, Any], path: str | Path = EXPERIMENT_INDEX) -> 
     return path
 
 
-def read_experiments(path: str | Path = EXPERIMENT_INDEX) -> list:
-    path = Path(path)
+def read_experiments(path=None) -> list:
+    path = _index_path(path)
     if not path.is_file():
         return []
     return [json.loads(ln) for ln in path.read_text().splitlines() if ln.strip()]

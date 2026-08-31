@@ -147,7 +147,52 @@ epoch counter, optimizer and RNG. Output → `checkpoints/experiments/<v>_pretra
 Loss numbers alone say nothing about strength — every candidate must still be
 evaluated by playing games (12.6).
 
-## Later stages
+## Evaluation, promotion & the loop (`scripts/eval_bot.py`, `promote_model.py`, `iterate.py`)
 
-12.6 evaluation / promotion / iterate loop — added as it lands. The RL half of the
-loop (AZ-style MCTS self-play) is deferred to `docs/alphazero-plan.md`.
+**Model loss is not enough — every candidate is judged by playing games.**
+
+- `scripts/eval_bot.py --checkpoint <ckpt>` loads *any* net kind (`load_agent`) and
+  plays the standard panel (Random / Greedy / Heuristic / Minimax 1-3), colour-
+  alternated, with Wilson CIs and an internal-Elo placement. `--vs-production` adds
+  the current registered model; `--vs <ckpt>` (repeatable) adds named historical
+  checkpoints. Writes a report and an `experiments/index.jsonl` row.
+
+- `scripts/promote_model.py <candidate> --config configs/pretrain.yaml` is the
+  **only** writer of `checkpoints/production/` and `checkpoints/registry.json`.
+  The rule (from `configs/pretrain.yaml::promotion`, overriding the CLI defaults):
+
+  ```
+  wilson_lb(win rate vs current best) > min_vs_best_lb          AND
+  win rate vs random >= best's − max_baseline_regression         AND
+  win rate vs greedy >= best's − max_baseline_regression         AND
+  games >= min_games
+  ```
+
+  Fail → nothing is written, exit 1, an `experiments/index.jsonl` row
+  `decision: rejected`. Pass → `Registry.promote` copies the candidate to
+  `production/{best,latest}.pt`, rewrites `registry.json`, copies to
+  `models/othello_bot_<version>.pt`, adds a `models/MODELS.md` row, writes
+  `experiments/<ts>_promote_<version>/promotion.json` and an index row
+  `decision: promoted`. **Training loss alone never promotes anything.**
+
+- `scripts/iterate.py` runs ingest → validate → analyze → dataset → pretrain →
+  eval → promote as subprocesses (each with its own config), one
+  `experiments/index.jsonl` row per stage. `--dry-run` prints the plan;
+  `--from` / `--to` run a subset.
+
+## Experiment tracking
+
+`utils/experiment.py::log_experiment(row)` appends one JSON line (with timestamp +
+git commit) to **`experiments/index.jsonl`** (committed). `pretrain.py`,
+`eval_bot.py`, `promote_model.py` and `iterate.py` all write rows, so the full
+history — datasets, hyperparameters, seeds, eval results, promotion decisions,
+checkpoint paths — survives even when per-run directories are pruned.
+`read_experiments()` loads it back.
+
+## Deferred
+
+The RL half of the loop — AZ-style **MCTS self-play** that generates fresh games
+and feeds them back through validation/analysis — is deferred to
+`docs/alphazero-plan.md`. Until then the loop iterates by pointing
+`configs/dataset.yaml::sources` at more historical data (self-play games from the
+web app already flow in via `--source webapp`, tagged `data_kind: self_play`).

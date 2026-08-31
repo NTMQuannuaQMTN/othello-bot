@@ -1,0 +1,18 @@
+# Historical-data train -> evaluate -> promote loop (Phase 12.6).
+# Each stage is run as a subprocess with its own config. `iterate.py --dry-run`
+# prints the plan without executing.
+
+source: wthor                    # ingest / validate / analyze this source
+
+stages: [ingest, validate, analyze, dataset, pretrain, eval, promote]
+
+ingest:   {limit: null}
+analyze:  {config: configs/analysis.yaml, limit: null}
+dataset:  {config: configs/dataset.yaml}
+pretrain: {config: configs/pretrain.yaml}
+eval:     {games: 200, vs_production: true}
+promote:  {config: configs/pretrain.yaml, games: 200}
+
+# The RL half — AZ-style MCTS self-play that would generate new games and feed
+# them back in — is deferred (docs/alphazero-plan.md). Until then the loop is
+# repeated by pointing `dataset.sources` at more historical data.

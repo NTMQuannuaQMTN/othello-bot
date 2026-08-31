@@ -210,6 +210,10 @@ labeller, **not an oracle**.
       Behaviour cloning, NOT RL. `tests/rl/test_supervised.py` (6): overfit tiny
       set, val-only metrics, ckpt under experiments/ + roundtrip, resume restores
       epoch+optimizer, agent always legal + plays, DQN ckpt still loads.
-- [ ] 12.6 Eval vs baselines + production + historical; config-driven promotion;
-      `experiments/index.jsonl` tracking; `scripts/iterate.py` loop skeleton
-- [ ] (deferred) AZ-MCTS self-play — `docs/alphazero-plan.md`
+- [x] 12.6 `scripts/eval_bot.py` loads any net kind (`load_agent`) + `--vs-production`
+      / `--vs <ckpt>`; `scripts/promote_model.py --config` (promotion rule from
+      `configs/pretrain.yaml`, + `min_games`); `experiments/index.jsonl` tracking
+      (`utils/experiment.py::log_experiment` in pretrain/eval/promote/iterate);
+      `scripts/iterate.py` (subprocess orchestrator, `--dry-run`/`--from`/`--to`),
+      `configs/iterate.yaml`; `tests/rl/test_iterate_and_tracking.py` (7)
+- [ ] (deferred) AZ-MCTS self-play — `docs/alphazero-plan.md` (the RL half of the loop)

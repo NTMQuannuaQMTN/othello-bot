@@ -31,9 +31,10 @@ if str(_SRC) not in sys.path:
 
 _ROOT = Path(__file__).resolve().parents[1]
 
-from othello_rl.evaluation.metrics import summarize_match, wilson_interval  # noqa: E402
+from othello_rl.evaluation.metrics import summarize_match  # noqa: E402
 from othello_rl.evaluation.tournament import play_match  # noqa: E402
 from othello_rl.rl.checkpoint import Registry, load_checkpoint, resolve_checkpoint  # noqa: E402
+from othello_rl.utils.experiment import log_experiment  # noqa: E402
 from othello_rl.utils.seed import seed_everything  # noqa: E402
 
 _PANEL = ["random", "greedy", "heuristic", "minimax:2"]
@@ -55,6 +56,9 @@ def main(argv=None) -> int:
     ap.add_argument("--method", default="unspecified")
     ap.add_argument("--games", type=int, default=200)
     ap.add_argument("--seed", type=int, default=20260831)
+    ap.add_argument("--config", default=None,
+                    help="YAML with a `promotion:` block (min_vs_best_lb, "
+                         "max_baseline_regression, min_games) — overrides the flag defaults")
     ap.add_argument("--min-vs-best", type=float, default=0.50,
                     help="Wilson lower bound on win rate vs current best must exceed this")
     ap.add_argument("--slack", type=float, default=0.03,
@@ -62,6 +66,17 @@ def main(argv=None) -> int:
     ap.add_argument("--force", action="store_true", help="promote even if the criterion fails")
     args = ap.parse_args(argv)
     seed_everything(args.seed)
+
+    min_vs_best, slack, min_games = args.min_vs_best, args.slack, 0
+    if args.config:
+        from othello_rl.utils.config import load_config
+        pr = dict(load_config(args.config).get("promotion", {}) or {})
+        min_vs_best = float(pr.get("min_vs_best_lb", min_vs_best))
+        slack = float(pr.get("max_baseline_regression", slack))
+        min_games = int(pr.get("min_games", 0))
+    if args.games < min_games:
+        print(f"ERROR: --games {args.games} < promotion min_games {min_games}", file=sys.stderr)
+        return 2
 
     reg = Registry.load()
     cand_path = resolve_checkpoint(args.candidate)
@@ -100,13 +115,13 @@ def main(argv=None) -> int:
     reasons = []
     if vs_best is not None:
         lb = vs_best["ci_low"]
-        if lb <= args.min_vs_best:
-            reasons.append(f"win rate vs best Wilson-LB {lb:.3f} <= {args.min_vs_best}")
+        if lb <= min_vs_best:
+            reasons.append(f"win rate vs best Wilson-LB {lb:.3f} <= {min_vs_best}")
     for opp in ("random", "greedy"):
         prev = prev_eval.get(f"win_rate_vs_{opp}")
-        if prev is not None and results[opp]["win_rate"] < prev - args.slack:
+        if prev is not None and results[opp]["win_rate"] < prev - slack:
             reasons.append(f"regressed vs {opp}: {results[opp]['win_rate']:.3f} < "
-                           f"{prev:.3f} - {args.slack}")
+                           f"{prev:.3f} - {slack}")
 
     passed = not reasons
     print()
@@ -117,8 +132,12 @@ def main(argv=None) -> int:
         for r in reasons:
             print(f"  - {r}")
 
+    wr = {k: round(v["win_rate"], 3) for k, v in results.items()}
     if not passed and not args.force:
         print("\nnothing written — production model unchanged.")
+        log_experiment({"kind": "promotion", "candidate": str(cand_path), "version": version,
+                        "parent": parent, "games": args.games, "win_rates": wr,
+                        "decision": "rejected", "reasons": reasons})
         return 1
 
     evaluation = {f"win_rate_vs_{k}": v["win_rate"] for k, v in results.items() if k != "vs_best"}
@@ -142,6 +161,11 @@ def main(argv=None) -> int:
         {"version": version, "parent": parent, "method": args.method,
          "results": results, "passed": passed, "forced": bool(args.force and not passed)},
         indent=2) + "\n")
+
+    log_experiment({"kind": "promotion", "candidate": str(cand_path), "version": version,
+                    "parent": parent, "method": args.method, "games": args.games,
+                    "win_rates": wr, "decision": "forced" if not passed else "promoted",
+                    "checkpoint": f"checkpoints/production/best.pt"})
 
     print(f"\nPROMOTED -> {version}")
     print(f"  checkpoints/production/best.pt + latest.pt + registry.json updated")

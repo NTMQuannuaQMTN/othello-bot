@@ -110,8 +110,14 @@ python3 scripts/eval_bot.py --checkpoint checkpoints/experiments/v003.pt --games
 ```bash
 python3 scripts/promote_model.py checkpoints/experiments/v003.pt \
     --name v003_selfplay --parent v001_curriculum_selfplay \
-    --method "self-play from v001" --games 200
+    --method "self-play from v001" --config configs/pretrain.yaml --games 200
 ```
+
+`--config` reads the `promotion:` block (`min_vs_best_lb`,
+`max_baseline_regression`, `min_games`); without it the CLI flags apply. Works for
+DQN *and* policy(+value) candidates (`load_checkpoint(...).build_agent()` /
+`load_agent` dispatch on `net_kind`). Every promote/reject writes a row to
+`experiments/index.jsonl`.
 
 Pass → copies the candidate to `checkpoints/production/{best,latest}.pt`,
 rewrites `registry.json`, copies to `models/othello_bot_v003_selfplay.pt`, adds a
