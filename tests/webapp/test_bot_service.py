@@ -172,6 +172,41 @@ def test_corner_flags_detect_give_and_take():
     assert fl["takes_corner"] is False
 
 
+def test_x_square_next_to_empty_corner_is_a_blunder(bot):
+    from tests.environment.conftest import make_board
+    b = make_board(["........", "........", "..O.O...", "...X.X..",
+                    "........", "........", "........", "........"])
+    st = Board(b, BLACK)
+    assert {(1, 1), (1, 3)} <= set(st.legal_moves())   # b2 (X-square) vs d2 (safe)
+    g = bot.grade_move(st, 1 * 8 + 1)          # b2 — the X-square guarding empty a1
+    assert g["corner_risk"] >= 0.7 and g["gives_corner"]
+    assert g["label"] == "Blunder"
+    # ...and it is never the suggested move
+    assert bot.evaluate_position(st)["moves"][0]["action"] != 1 * 8 + 1
+
+
+def test_playing_the_top_ranked_move_grades_best(bot):
+    # a line where every move IS the engine's own #1 pick -> those plies grade
+    # "Best" (unless the pick itself concedes a corner / loses the game)
+    s = Board.initial()
+    acts, checked = [], 0
+    for _ in range(14):
+        if s.is_terminal():
+            break
+        mv = s.legal_moves()
+        if not mv:
+            s = s.apply(None); acts.append(64); continue
+        top = bot.evaluate_position(s)["moves"][0]
+        acts.append(top["action"])
+        s = s.apply(divmod(top["action"], 8))
+    an = bot.analyse_line(acts)
+    for ply in an["plies"]:
+        if ply["played"] == ply["best"] and ply["drop"] < 0.03:
+            assert ply["label"] == "Best"
+            checked += 1
+    assert checked >= 3
+
+
 def test_finetune_from_game_runs_and_guardrails(bot):
     acts, final = _random_game(2)
     v0, g0 = bot.version, bot.games_finetuned

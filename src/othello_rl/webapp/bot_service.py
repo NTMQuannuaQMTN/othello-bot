@@ -71,15 +71,28 @@ _BOT_WEIGHT = 0.5
 _COACH_WEIGHT = 0.5
 _COACH_SCALE = 18.0  # heuristic-value units -> tanh -> [0, 1)
 
-#: corners dominate Othello — a move that hands one over is (almost) always a
-#: blunder, and taking one is (almost) always fine. These feed both the move
-#: grading and the "bot likes" ranking so the two never disagree.
-_CORNER_RC = frozenset({(0, 0), (0, 7), (7, 0), (7, 7)})
+#: Corners dominate Othello and the small DQN is nearly blind to them (its
+#: action-values sit within ~1% of each other in most positions), so corner
+#: safety is assessed directly and used as a hard floor on a move's regret.
+_CORNER_RC = ((0, 0), (0, 7), (7, 0), (7, 7))
 _CORNER_ACTIONS = frozenset(r * 8 + c for (r, c) in _CORNER_RC)
-_GIVES_CORNER_REGRET = 0.45    # >= Blunder threshold (0.38)
-_TAKES_CORNER_REGRET = 0.02    # <= Best threshold (0.03)
-_CORNER_RANK_PENALTY = 0.60    # subtracted from a move's win-prob when it gives a corner
-_CORNER_RANK_BONUS = 0.15      # added when it takes one
+#: the C- and X-squares guarding each corner (orthogonal neighbours + the diagonal)
+_CORNER_ADJ = {
+    (0, 0): {(0, 1), (1, 0), (1, 1)},
+    (0, 7): {(0, 6), (1, 7), (1, 6)},
+    (7, 0): {(7, 1), (6, 0), (6, 1)},
+    (7, 7): {(7, 6), (6, 7), (6, 6)},
+}
+#: corner-risk (from ``_corner_risk``) -> regret floor
+_RISK_OPP_TAKES = 1.0      # opponent can play straight into a corner after this move
+_RISK_X_SQUARE = 0.70      # this move sits on the X-square by a still-empty corner
+_RISK_C_SQUARE = 0.42      # ... the C-square
+_REGRET_OPP_TAKES = 0.55   # -> Blunder
+_REGRET_X_SQUARE = 0.42    # -> Blunder
+_REGRET_C_SQUARE = 0.26    # -> Mistake
+_TAKES_CORNER_REGRET = 0.02
+_CORNER_RANK_PENALTY = 0.60   # win-prob points removed from a risky move when ranking
+_CORNER_RANK_BONUS = 0.15     # ... added to a corner take
 #: a move is a Blunder if the mover was fine (> this) and is now losing badly (< the next)
 _BIGLOSS_BEFORE = 0.42
 _BIGLOSS_AFTER = 0.24
@@ -227,34 +240,49 @@ class OthelloBot:
             out[r * 8 + c] = float(np.clip(v, -5e4, 5e4))
         return out
 
-    def _corner_flags(self, board: Board, action: int) -> Tuple[bool, bool]:
-        """``(takes_corner, gives_corner)`` for ``action``.
+    def _corner_risk(self, board: Board, action: int) -> float:
+        """How much this move endangers a corner, in [-1, 1]:
 
-        *gives_corner* = after this move the opponent has a legal move straight
-        into a corner (and the move itself isn't a corner) — the practical
-        signature of an X/C-square blunder.
+        * ``< 0``  the move *takes* a corner;
+        * ``0``    corner-neutral;
+        * ``0.42`` the move sits on a C-square next to a still-empty corner;
+        * ``0.70`` ... the X-square (diagonal) — worse;
+        * ``1.0``  after this move the opponent can play straight into a corner.
         """
-        if action == PASS_ACTION or action not in range(64):
-            return False, False
-        takes = action in _CORNER_ACTIONS
+        if action == PASS_ACTION or not (0 <= action < 64):
+            return 0.0
+        rc = action_to_rc(action)
+        if action in _CORNER_ACTIONS:
+            return -1.0
         try:
-            child = board.apply(action_to_rc(action))
-        except Exception:  # pragma: no cover - illegal, handled upstream
-            return takes, False
-        gives = False
-        if not takes and not child.is_terminal() and child.player != board.player:
+            child = board.apply(rc)
+        except Exception:  # pragma: no cover
+            return 0.0
+        risk = 0.0
+        if not child.is_terminal() and child.player != board.player:
             opp_legal = {r * 8 + c for (r, c) in child.legal_moves()}
-            gives = bool(opp_legal & _CORNER_ACTIONS)
-        return takes, gives
+            if opp_legal & _CORNER_ACTIONS:
+                risk = _RISK_OPP_TAKES
+        for corner, adj in _CORNER_ADJ.items():
+            if rc in adj and child.array[corner] == 0:
+                is_x = abs(rc[0] - corner[0]) == 1 and abs(rc[1] - corner[1]) == 1
+                risk = max(risk, _RISK_X_SQUARE if is_x else _RISK_C_SQUARE)
+        return risk
+
+    def _corner_flags(self, board: Board, action: int) -> Tuple[bool, bool]:
+        """``(takes_corner, gives_corner)`` — a coarse view of ``_corner_risk``."""
+        risk = self._corner_risk(board, action)
+        return risk < 0.0, risk >= _RISK_X_SQUARE
 
     def _ranked_moves(self, board: Board, q: np.ndarray, legal) -> List[int]:
         """Legal moves ordered by a corner-aware blend of the bot's win-prob, so
-        the top suggestion is never a move that immediately hands over a corner."""
+        the top suggestion is never a move that concedes (or risks) a corner."""
         def key(a: int) -> float:
             wp = _winprob(float(q[a]))
-            takes, gives = self._corner_flags(board, int(a))
-            return wp + (_CORNER_RANK_BONUS if takes else 0.0) \
-                - (_CORNER_RANK_PENALTY if gives else 0.0)
+            risk = self._corner_risk(board, int(a))
+            if risk < 0.0:
+                return wp + _CORNER_RANK_BONUS
+            return wp - _CORNER_RANK_PENALTY * risk
         return sorted((int(a) for a in legal), key=key, reverse=True)
 
     def _mover_winprob(self, board: Board) -> float:
@@ -285,39 +313,50 @@ class OthelloBot:
         else:
             coach_best, coach_drop = best, 0.0
 
-        regret = _BOT_WEIGHT * bot_drop + _COACH_WEIGHT * coach_drop
+        # the DQN and the coach each get a vote, but a strong single signal (a
+        # corner concession) must not be diluted — so combine with max(), not a
+        # weighted sum.
+        regret = max(_BOT_WEIGHT * bot_drop + _COACH_WEIGHT * coach_drop,
+                     0.6 * coach_drop)
 
-        takes_c, gives_c = self._corner_flags(board, played)
+        crisk = self._corner_risk(board, played)
+        takes_c = crisk < 0.0
+        gives_c = crisk >= _RISK_X_SQUARE
         big_loss = False
-        if not gives_c:
-            try:
-                before = self._mover_winprob(board)
-                after = self._mover_winprob(board.apply(
-                    None if played == PASS_ACTION else action_to_rc(played)))
-                big_loss = before > _BIGLOSS_BEFORE and after < _BIGLOSS_AFTER
-            except Exception:  # pragma: no cover
-                pass
-        if gives_c:
-            regret = max(regret, _GIVES_CORNER_REGRET)
+        try:
+            before = self._mover_winprob(board)
+            after = self._mover_winprob(board.apply(
+                None if played == PASS_ACTION else action_to_rc(played)))
+            big_loss = before > _BIGLOSS_BEFORE and after < _BIGLOSS_AFTER
+        except Exception:  # pragma: no cover
+            pass
+
+        if crisk >= _RISK_OPP_TAKES:
+            regret = max(regret, _REGRET_OPP_TAKES)
+        elif crisk >= _RISK_X_SQUARE:
+            regret = max(regret, _REGRET_X_SQUARE)
+        elif crisk >= _RISK_C_SQUARE:
+            regret = max(regret, _REGRET_C_SQUARE)
         elif takes_c:
             regret = min(regret, _TAKES_CORNER_REGRET)
         if big_loss:
-            regret = max(regret, _GIVES_CORNER_REGRET + 0.05)
+            regret = max(regret, _REGRET_OPP_TAKES + 0.05)
 
         label, glyph = classify_drop(regret)
-        # "Best" is reserved for the move that really is best — bot's top pick,
-        # the coach agrees, and it doesn't concede a corner. Otherwise it's at
-        # most "Excellent"; a move that's neither side's pick is at most "Good".
-        really_best = played == best and coach_drop < 0.02 and not gives_c and not big_loss
-        if label == "Best" and not really_best:
+        # You played the engine's top move (corner-aware) and it doesn't concede a
+        # corner -> that's "Best", period (matches the "✓ best" hint). A move that
+        # is *not* the top pick can't be "Best".
+        safe_top = played == best and crisk < _RISK_C_SQUARE and not big_loss
+        if safe_top and label in ("Excellent", "Good"):
+            label, glyph = "Best", ""
+        elif label == "Best" and not safe_top:
             label, glyph = "Excellent", ""
-        if label in ("Best", "Excellent") and played != best and played != int(coach_best):
-            label, glyph = "Good", ""
 
         return {
             "q": q, "mask": mask, "legal": legal,
             "bot_best": best, "coach_best": int(coach_best),
             "takes_corner": takes_c, "gives_corner": gives_c, "big_loss": big_loss,
+            "corner_risk": float(crisk),
             "bot_drop": bot_drop, "coach_drop": coach_drop, "regret": regret,
             "label": label, "glyph": glyph,
         }
@@ -339,17 +378,19 @@ class OthelloBot:
             wp_black = _eval_black(self, board)  # blended, for display
             moves = []
             for a in ranked:
-                takes_c, gives_c = self._corner_flags(board, a)
+                risk = self._corner_risk(board, int(a))
                 wp = _winprob(float(q[a]))
+                score = (wp + _CORNER_RANK_BONUS) if risk < 0.0 \
+                    else (wp - _CORNER_RANK_PENALTY * risk)
                 moves.append({
                     "action": int(a),
                     "san": _san(a),
                     "value": float(q[a]),
                     "winprob": wp,
-                    "score": wp + (_CORNER_RANK_BONUS if takes_c else 0.0)
-                             - (_CORNER_RANK_PENALTY if gives_c else 0.0),
-                    "gives_corner": gives_c,
-                    "takes_corner": takes_c,
+                    "score": score,
+                    "corner_risk": float(risk),
+                    "gives_corner": risk >= _RISK_X_SQUARE,
+                    "takes_corner": risk < 0.0,
                 })
             return {"terminal": False, "winprob_black": wp_black,
                     "winprob_stm": wp_stm, "moves": moves}
@@ -584,6 +625,7 @@ class OthelloBot:
             g = self.grade_move(s, a)
             label, best, coach_a = g["label"], g["bot_best"], g["coach_best"]
             gives_c, takes_c = g["gives_corner"], g["takes_corner"]
+            big_loss, coach_drop = g["big_loss"], g["coach_drop"]
 
             j = i + 1
             while j < len(states) and not states[j].is_terminal() and states[j].player != learn_side:
@@ -597,6 +639,10 @@ class OthelloBot:
             next_mask = legal_action_mask(nxt)
             trans.append((obs, a, r, next_obs, done, next_mask))
 
+            # Shaping is deliberately conservative: the base transition above
+            # already carries the game outcome. We only add an *extra* signal for
+            # things we can actually stand behind — conceding vs taking a corner,
+            # a clear positional blunder, or the genuine top move in a won game.
             penalised = reinforced = False
             if gives_c and coach_a != a:
                 # handing over a corner: hard-penalise it, reward the safe move
@@ -604,7 +650,9 @@ class OthelloBot:
                 trans.append((obs, a, -cfg.blunder_penalty, next_obs, True, next_mask))
                 trans.append((obs, coach_a, cfg.great_bonus, next_obs, True, next_mask))
                 penalised, n_pen = True, n_pen + 1
-            elif label in ("Mistake", "Blunder") and coach_a != a:
+            elif (label in ("Mistake", "Blunder") or big_loss) and coach_a != a \
+                    and coach_drop > 0.08:
+                # the positional check clearly disagrees -> penalise, show the fix
                 trans.append((obs, a, -cfg.blunder_penalty, next_obs, True, next_mask))
                 trans.append((obs, coach_a, cfg.great_bonus, next_obs, True, next_mask))
                 penalised, n_pen = True, n_pen + 1
@@ -613,9 +661,12 @@ class OthelloBot:
                 trans.append((obs, a, max(cfg.great_bonus, r if done else 0.0),
                               next_obs, True, next_mask))
                 reinforced, n_reinf = True, n_reinf + 1
-            elif label in ("Best", "Excellent") and a == best:
-                bonus = max(cfg.great_bonus, r if done else 0.0)
-                trans.append((obs, a, bonus, next_obs, True, next_mask))
+            elif label == "Best" and a == best and (coach_a == a or coach_drop < 0.03) \
+                    and (r > 0 or not done):
+                # unambiguously the best move (both the bot and the check agree)
+                # and it didn't lose the game -> a small reinforcement
+                trans.append((obs, a, max(cfg.great_bonus, r if done else 0.0),
+                              next_obs, True, next_mask))
                 reinforced, n_reinf = True, n_reinf + 1
 
             grades.append({
@@ -811,22 +862,18 @@ def _san(action: int) -> str:
 
 
 def _eval_black(bot: "OthelloBot", board: Board) -> float:
-    """Win probability for BLACK, for the eval graph.
+    """Win probability for BLACK, for the eval bar / graph.
 
-    The DQN's value estimates are optimistic and low-variance (V(s) is ~0.65 for
-    whoever is to move, regardless of who is actually ahead), which on its own
-    produces a meaningless per-ply zig-zag. So the graph blends the bot's estimate
-    with the same fast positional score used to grade moves.
+    The DQN's value estimate is STM-relative and near-constant (~0.65 for whoever
+    is to move), so blending it in just adds a per-ply zig-zag. The eval line is
+    therefore the fast positional score (disc diff, mobility, corners, edges,
+    corner danger) from Black's fixed perspective — smooth and directional —
+    sharpened as the board fills so a decided endgame reads as ~0/1.
     """
     if board.is_terminal():
         w = board.winner()
         return 1.0 if w == BLACK else (0.0 if w == WHITE else 0.5)
-    q, _ = bot._q_values(board)
-    v = float(np.max(q[np.isfinite(q)]))
-    bot_wp = _winprob(v)
-    bot_wp_black = bot_wp if board.player == BLACK else 1.0 - bot_wp
-
     h = _heval(board.array, BLACK, _HW)  # signed: + = good for black
-    h_wp_black = float(np.clip(0.5 + 0.5 * np.tanh(h / 22.0), 0.0, 1.0))
-
-    return 0.35 * bot_wp_black + 0.65 * h_wp_black
+    filled = int(np.count_nonzero(board.array))
+    scale = 26.0 - 14.0 * (filled / 64.0)  # ~26 in the opening -> ~12 late
+    return float(np.clip(0.5 + 0.5 * np.tanh(h / scale), 0.02, 0.98))

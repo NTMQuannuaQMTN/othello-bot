@@ -59,10 +59,12 @@ An **interactive analysis board** — you don't type moves, you play them:
   move list (`f5 d6 c3 …`) or run-together transcript (`f5d6c3…`);
 - a `?analyse=<transcript>` URL opens straight into that line.
 
-The **eval bar** and **eval graph** are the bot's win-probability for **Black**
-across the line (blended with a positional score — see the note below). The bar
-fills from the bottom with Black's share, so the colour that's ahead is the
-colour that fills the bar.
+The **eval bar** and **eval graph** are a win-probability for **Black** across the
+line, from the fast positional score (disc diff, mobility, corners, edges, corner
+danger) from Black's fixed perspective — *not* the DQN value, which is
+side-to-move-relative and just produces a per-ply zig-zag. It is sharpened as the
+board fills so a decided endgame reads as ~0 / 1. The bar fills from the bottom
+with Black's share, so the colour that's ahead fills the bar.
 
 Below the graph, a **strategy read-out** per side: move-quality counts +
 `accuracy` (fraction of Good-or-better moves), corners / X-squares / edge moves
@@ -81,27 +83,34 @@ from all N saved games* (`scripts/finetune_from_games.py --learn both` offline).
 
 ### How a move is graded
 
-The DQN's raw action-values are only weakly separated, so a move's **regret** is a
-blend of two signals plus a corner / big-loss override:
+The small DQN's action-values sit within ~1% of each other in most positions and
+it is nearly blind to corners, so **corner safety is assessed directly** and used
+as a hard floor on a move's **regret**:
 
 ```
-regret = 0.5 · (win-prob the bot thinks the move gives up vs its own best move)
-       + 0.5 · tanh( positional value lost vs a 1-ply corner/mobility/edge check / 18 )
+regret = max( 0.5·bot_drop + 0.5·coach_drop ,  0.6·coach_drop )   # DQN + 1-ply heuristic
 
-then:  gives a corner   -> regret ≥ 0.45  (Blunder)
-       takes a corner   -> regret ≤ 0.02  (Best/Excellent)
-       leaves the mover losing badly (win-prob > 0.42 → < 0.24)  -> regret ≥ 0.50
+then, from _corner_risk(move):
+  opponent can then play into a corner   -> regret ≥ 0.55   (Blunder)
+  move sits on the X-square by an empty corner -> regret ≥ 0.42 (Blunder)
+  ... the C-square                        -> regret ≥ 0.26   (Mistake)
+  move takes a corner                     -> regret ≤ 0.02   (Best/Excellent)
+  leaves the mover losing badly (win-prob > 0.42 → < 0.24) -> regret ≥ 0.60
 ```
 
-"Gives a corner" = after the move the opponent has a legal move straight into a
-corner. `regret` (0–1) is mapped to a label by `_CLASS_TABLE` in
-`webapp/bot_service.py`. **Best** is reserved for a move that is the bot's own top
-pick, the 1-ply check agrees, and it concedes no corner; a move that is neither
-pick is capped at **Good**.
+`regret` (0–1) → label via `_CLASS_TABLE`. **Best** = you played the engine's own
+corner-aware #1 move and it concedes no corner and doesn't lose the game (this
+matches the "✓ best" hint in the move list); a move that is *not* the #1 pick is
+never "Best".
 
-The bot's move ranking (the dashed best move, the "bot likes" list, `GET /api/eval`
-`moves[].score`) uses the same corner-aware blend, so the top suggestion is never a
-move that immediately hands over a corner.
+The move ranking (dashed best move, "bot likes", `GET /api/eval` `moves[].score`
+and `moves[].corner_risk`) uses the same corner-aware order, so the top suggestion
+never concedes — or sits next to — a corner.
+
+Fine-tuning is conservative about which moves it reinforces: the game outcome is
+always the base signal; an *extra* bonus/penalty is only added for taking vs
+conceding a corner, a clear positional blunder the 1-ply check agrees with, or the
+unambiguous best move in a game that side won.
 
 ## Fine-tuning the bot from a game
 
