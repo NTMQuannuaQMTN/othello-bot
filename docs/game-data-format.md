@@ -11,7 +11,7 @@ replay validation happen in the next stage (`scripts/validate_games.py`).
 |---|---|
 | `source` | `"wthor"`, `"webapp"`, `"transcript"`, `"generic"`, … |
 | `source_format` | `"wtb"`, `"jsonl"`, `"transcript"`, `"json"` |
-| `moves` | flat action indices `row*8+col` (0–63), `64` = pass, **as the source stores them** — most sources omit forced passes |
+| `moves` | flat action indices `row*8+col` (0–63) **as the source stores them**; `64` = pass but sources normally omit forced passes and the engine auto-skips them, so `64` is rarely present |
 | `game_id` | stable id; defaults to `"<source>:<sha1(move_signature)[:16]>"` |
 | `data_kind` | `historical` \| `self_play` \| `engine_generated` — kept on every downstream training example |
 | `metadata` | free dict: `year`, `tournament`, `black_player`, ratings, … |
@@ -22,6 +22,30 @@ replay validation happen in the next stage (`scripts/validate_games.py`).
 
 `move_signature()` (placements only, passes stripped) is the **de-duplication
 key** — the same game from two databases collapses to one.
+
+## Validation (`scripts/validate_games.py`)
+
+Every ingested record is replayed through the project's own engine
+(`src/othello_rl/validation/replay.py`) and classified:
+
+| status | meaning |
+|---|---|
+| `VALID` | every placement was legal when played; the game reaches a terminal position |
+| `INVALID` | an illegal placement, or placements after the game already ended |
+| `INCOMPLETE` | all placements legal but the game stops before a terminal position |
+| `UNSUPPORTED_FORMAT` | no placements at all |
+
+`Board.apply` auto-skips a player with no legal move, so forced passes never
+appear as explicit actions — an explicit `64` token in a source is treated as
+annotation and dropped (`passes_skipped` is counted). `canonical_moves` (written
+onto the VALID record) is the pure placement sequence.
+
+A recorded winner that disagrees with the replay does **not** fail validation
+(the game is still legal) but is counted as `winner_mismatch` and flagged in
+`provenance.validation`. VALID games → `data/processed/validated_games/<source>.jsonl`;
+everything else → `data/rejected/<source>.jsonl` with a reason. Stats go to
+`data/processed/validated_games/<source>.stats.json` and are copied to
+`experiments/<ts>_validate_<source>/validation.stats.json` (committed).
 
 JSON round-trips via `GameRecord.to_json()` / `.from_json()`. Files are JSONL
 (one record per line) under `data/processed/validated_games/<source>.raw.jsonl`.

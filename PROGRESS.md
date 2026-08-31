@@ -10,8 +10,10 @@ Phase 11: persistent model & checkpoint management.
 
 ## Current task
 Phase 12 — historical-game supervised pretraining pipeline (see
-`docs/historical-training.md`, plan in `.claude/plans/`). 12.1 ingestion done;
-12.2 validation next. The 3–5 ply analysis is a heuristic labeller, not an oracle.
+`docs/game-data-format.md`, plan in `.claude/plans/`). 12.1 ingestion + 12.2
+validation done; 12.3 short-horizon analysis next. The 3–5 ply analysis is a
+heuristic labeller, not an oracle. NB: `Board.apply` auto-skips forced passes, so
+the pipeline never sees an explicit pass action.
 
 ## Model lifecycle (verified 2026-08-31)
 

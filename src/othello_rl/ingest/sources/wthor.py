@@ -23,8 +23,8 @@ File layout (little-endian)::
       7     theoretical score (perfect play)
       8..67 60 move bytes, each = 10*row + col with row,col in 1..8; 0 => no move
 
-Forced passes are NOT stored; they are inserted later by
-:mod:`othello_rl.validation.replay`.
+Forced passes are NOT stored. The project engine auto-skips a player with no
+legal move (``Board.apply``), so replay just works without them.
 """
 from __future__ import annotations
 

@@ -181,9 +181,10 @@ labeller, **not an oracle**.
       WThor `.wtb`, our `games.jsonl`, transcripts, generic JSON), cross-source
       dedup by move signature, `scripts/ingest_games.py`, `docs/game-data-format.md`;
       `tests/ingest/test_ingest.py`
-- [ ] 12.2 Validation & replay — classify VALID/INVALID/INCOMPLETE/UNSUPPORTED,
-      insert forced passes, compare final discs to recorded result; `validation/`,
-      `scripts/validate_games.py`
+- [x] 12.2 Validation & replay — replay every placement through the engine,
+      classify VALID/INVALID/INCOMPLETE/UNSUPPORTED, flag winner mismatch;
+      `validation/`, `scripts/validate_games.py`, stats copied to `experiments/`;
+      `tests/validation/test_validation.py` (9). (Engine auto-skips passes.)
 - [ ] 12.3 Short-horizon counterfactual analysis — shallow negamax+alpha-beta
       (reuse `MinimaxAgent`), regret vs best legal alternative at horizons [3,5],
       labels BEST/GOOD/ACCEPTABLE/MISTAKE/BLUNDER; `analysis/`, benchmark first
