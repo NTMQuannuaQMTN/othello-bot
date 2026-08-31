@@ -24,6 +24,7 @@ is consulted only for *its* moves.
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
@@ -32,12 +33,20 @@ from typing import List, Optional, Tuple
 
 Move = Optional[Tuple[int, int]]
 
+#: repo root — ``src/othello_rl/eval_external/egaroucid.py`` -> parents[3]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_EXE_NAME = "Egaroucid_for_Console.out"
+
 #: where the console build usually lands after ``clang++ ... -o bin/Egaroucid_for_Console.out``
 _KNOWN_LOCATIONS = (
+    str(_REPO_ROOT / "Egaroucid-console_v7.8.1" / "bin" / _EXE_NAME),
     "~/Downloads/Egaroucid-console_v7.8.1/bin/Egaroucid_for_Console.out",
     "~/Downloads/Egaroucid-console/bin/Egaroucid_for_Console.out",
     "/Applications/Egaroucid_for_Console.app/Contents/MacOS/Egaroucid_for_Console",
 )
+
+#: directories scanned with ``<dir>/Egaroucid-console*/bin/<exe>`` as a fallback
+_SCAN_DIRS = (_REPO_ROOT, Path("~/Downloads").expanduser())
 
 
 class EgaroucidError(RuntimeError):
@@ -47,16 +56,23 @@ class EgaroucidError(RuntimeError):
 def find_egaroucid(explicit: Optional[str] = None) -> Path:
     """Locate the Egaroucid console executable.
 
-    Order: ``explicit`` arg -> ``$PATH`` -> a few known download locations ->
-    a shallow scan of ``~/Downloads`` for ``Egaroucid_for_Console.out``.
+    Order: ``explicit`` arg / ``$EGAROUCID_EXE`` -> ``$PATH`` -> known locations
+    (repo root ``Egaroucid-console_v7.8.1/bin/``, then ``~/Downloads``) -> a
+    shallow ``Egaroucid-console*/bin/`` scan of the repo root and ``~/Downloads``.
+    A directory argument is accepted and searched for ``bin/<exe>``.
     """
+    explicit = explicit or os.environ.get("EGAROUCID_EXE")
     if explicit:
         p = Path(explicit).expanduser()
-        if p.is_file():
+        if p.is_dir():
+            for hit in (p / "bin" / _EXE_NAME, p / _EXE_NAME):
+                if hit.is_file():
+                    return hit
+        elif p.is_file():
             return p
         raise EgaroucidError(f"Egaroucid executable not found: {p}")
 
-    on_path = shutil.which("Egaroucid_for_Console.out") or shutil.which("Egaroucid_for_Console")
+    on_path = shutil.which(_EXE_NAME) or shutil.which("Egaroucid_for_Console")
     if on_path:
         return Path(on_path)
 
@@ -65,19 +81,20 @@ def find_egaroucid(explicit: Optional[str] = None) -> Path:
         if p.is_file():
             return p
 
-    downloads = Path("~/Downloads").expanduser()
-    if downloads.is_dir():
-        hits = sorted(downloads.glob("Egaroucid-console*/bin/Egaroucid_for_Console.out"))
-        if hits:
-            return hits[-1]
+    for d in _SCAN_DIRS:
+        if d.is_dir():
+            hits = sorted(d.glob(f"Egaroucid-console*/bin/{_EXE_NAME}"))
+            if hits:
+                return hits[-1]
 
     raise EgaroucidError(
-        "Could not find the Egaroucid console executable. Build it with:\n"
-        "  cd ~/Downloads/Egaroucid-console_v7.8.1\n"
-        "  xattr -cr .\n"
+        "Could not find the Egaroucid console executable. Put an "
+        "'Egaroucid-console_v7.8.1/' folder in the repo root (or ~/Downloads), or "
+        "build it:\n"
+        "  cd Egaroucid-console_v7.8.1 && xattr -cr .\n"
         "  clang++ -O2 ./src/Egaroucid_for_Console.cpp -o ./bin/Egaroucid_for_Console.out "
         "-mtune=native -pthread -std=c++20 -DHAS_NO_AVX2 -DHAS_ARM_PROCESSOR\n"
-        "then pass --egaroucid <path> or put it on your PATH."
+        "then pass --egaroucid <path>, set $EGAROUCID_EXE, or put it on your PATH."
     )
 
 

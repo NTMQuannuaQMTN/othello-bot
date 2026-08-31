@@ -10,6 +10,12 @@ dist/
 *.pth
 !models/*.pt
 webapp_state/
+.DS_Store
+
+# Local copy of the Egaroucid for Console engine (used by scripts/play_egaroucid.py
+# — auto-discovered here or under ~/Downloads; large, not ours, never committed).
+/Egaroucid-console_v7.8.1/
+/Egaroucid-console*/
 
 # Historical-game pipeline working data (local; like checkpoints/experiments/).
 # Manifests / stats reports are copied into experiments/ (committed) by the scripts.

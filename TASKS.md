@@ -224,7 +224,8 @@ labeller, **not an oracle**.
       **Egaroucid for Console 7.8.1** (built from source, macOS ARM64):
       `egaroucid.py` (`EgaroucidEngine`: GTP subprocess over stdin/stdout —
       `clear_board` / `play` / `genmove` / `gogui-rules_final_result`; coord
-      conversions; auto-discovery + build hint) and `match.py`
+      conversions; auto-discovery — `--egaroucid` / `$EGAROUCID_EXE` / repo-root
+      `Egaroucid-console*/` (git-ignored) / `~/Downloads` — + build hint) and `match.py`
       (`play_game` / `run_match`: our engine referees legality/passing/
       termination, per-move RL inference timing, `assert move in legal_moves`,
       forced-pass logging + counting, replayable `transcript`, Egaroucid-vs-our

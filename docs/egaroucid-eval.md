@@ -12,24 +12,28 @@ Run it **from the repo root** with the interpreter that has the deps
 which has no torch):
 
 ```bash
-cd /Users/qnrj/Code/othello-bot
+cd /Users/qnrj/Code/othello-bot        # or use an absolute path to the script
 
 # one debug game, every move printed, RL bot as Black
-/usr/bin/python3 scripts/play_egaroucid.py
+python3 scripts/play_egaroucid.py
 
 # a 10-game mini-match (colours alternate), results saved under results/egaroucid/
-/usr/bin/python3 scripts/play_egaroucid.py --games 10
+python3 scripts/play_egaroucid.py --games 10
 
 # pin things explicitly
-/usr/bin/python3 scripts/play_egaroucid.py \
+python3 scripts/play_egaroucid.py \
     --checkpoint checkpoints/production/best.pt \
     --games 10 --level 10 \
-    --egaroucid ~/Downloads/Egaroucid-console_v7.8.1/bin/Egaroucid_for_Console.out
+    --egaroucid Egaroucid-console_v7.8.1/bin/Egaroucid_for_Console.out
 ```
 
-The script itself is directory-independent (it resolves the repo root from its
-own path); only the *shell* needs to find `scripts/play_egaroucid.py`, so either
-`cd` to the root or give the script an absolute path.
+The script is directory-independent (it resolves the repo root from its own
+path); only the *shell* needs to find `scripts/play_egaroucid.py`, so `cd` to the
+root **or** give an absolute path — `python3 scripts/play_egaroucid.py` from
+`web/` fails because there is no `web/scripts/`.
+
+Either `python3` (3.9.6) on this machine has PyTorch (the `--user` site-packages
+under `~/Library/Python/3.9` are shared); if yours does not, use `/usr/bin/python3`.
 
 Key flags: `--games N`, `--level 0-60` (Egaroucid strength, default 10),
 `--opening-plies K` (random opening plies for game diversity, default 4),
@@ -42,15 +46,19 @@ With `--checkpoint` omitted the bot is resolved from `checkpoints/registry.json`
 
 ## The Egaroucid engine
 
-* **Executable:** built from source at
-  `~/Downloads/Egaroucid-console_v7.8.1/bin/Egaroucid_for_Console.out`
-  (auto-discovered; override with `--egaroucid`).
+* **Executable:** `Egaroucid-console_v7.8.1/bin/Egaroucid_for_Console.out`
+  (built from source). The engine folder lives in the **repo root** and is
+  **git-ignored** (`/Egaroucid-console*/` in `.gitignore`) — it is large and not
+  ours. `find_egaroucid()` looks, in order: `--egaroucid` / `$EGAROUCID_EXE`
+  (a file *or* a folder), `$PATH`, `<repo>/Egaroucid-console_v7.8.1/bin/`,
+  `~/Downloads/Egaroucid-console*/bin/`, then a shallow `Egaroucid-console*/bin/`
+  glob of the repo root and `~/Downloads`.
 * **Version:** Egaroucid for Console 7.8.1, macOS ARM64 (Generic build, Clang).
 * **OS compatibility:** Windows ships prebuilt; macOS / Linux must be built from
   source. This machine is Apple Silicon (M-series), so it was built with:
 
   ```bash
-  cd ~/Downloads/Egaroucid-console_v7.8.1
+  cd Egaroucid-console_v7.8.1
   xattr -cr .
   clang++ -O2 ./src/Egaroucid_for_Console.cpp -o ./bin/Egaroucid_for_Console.out \
       -mtune=native -pthread -std=c++20 -DHAS_NO_AVX2 -DHAS_ARM_PROCESSOR
@@ -160,6 +168,6 @@ app's *analysis* board. `play_egaroucid.py` uses only `OthelloBot.select_action`
 ## What is guaranteed unchanged
 
 Model architecture, weights, training data, training config and the production
-checkpoint are untouched. Only `src/othello_rl/eval_external/`,
-`scripts/play_egaroucid.py`, `tests/eval_external/` and `results/egaroucid/` were
-added.
+checkpoint are untouched. Added: `src/othello_rl/eval_external/`,
+`scripts/play_egaroucid.py`, `tests/eval_external/`, `results/egaroucid/`, a
+`.gitignore` line for the engine folder, and this doc.
