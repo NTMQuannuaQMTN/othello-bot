@@ -7,21 +7,29 @@ to `models/` / `checkpoints/`.
 
 ## TL;DR — the command
 
+Run it **from the repo root** with the interpreter that has the deps
+(`/usr/bin/python3` on this machine — a bare `python3` may resolve to Xcode's,
+which has no torch):
+
 ```bash
-export PATH="$HOME/Library/Python/3.9/bin:$PATH"   # this machine's Python
+cd /Users/qnrj/Code/othello-bot
 
 # one debug game, every move printed, RL bot as Black
-python3 scripts/play_egaroucid.py
+/usr/bin/python3 scripts/play_egaroucid.py
 
 # a 10-game mini-match (colours alternate), results saved under results/egaroucid/
-python3 scripts/play_egaroucid.py --games 10
+/usr/bin/python3 scripts/play_egaroucid.py --games 10
 
 # pin things explicitly
-python3 scripts/play_egaroucid.py \
+/usr/bin/python3 scripts/play_egaroucid.py \
     --checkpoint checkpoints/production/best.pt \
     --games 10 --level 10 \
     --egaroucid ~/Downloads/Egaroucid-console_v7.8.1/bin/Egaroucid_for_Console.out
 ```
+
+The script itself is directory-independent (it resolves the repo root from its
+own path); only the *shell* needs to find `scripts/play_egaroucid.py`, so either
+`cd` to the root or give the script an absolute path.
 
 Key flags: `--games N`, `--level 0-60` (Egaroucid strength, default 10),
 `--opening-plies K` (random opening plies for game diversity, default 4),
