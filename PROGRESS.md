@@ -9,8 +9,9 @@ Phases 1–11 complete and validated. Full spec audit done (see AUDIT below):
 Phase 11: persistent model & checkpoint management.
 
 ## Current task
-Web-app analysis/RL polish batch (in flight): per-move "best now" suggestion,
-corner reward/penalty shaping, eval-bar colour, move-list scroll containment.
+Phase 12 — historical-game supervised pretraining pipeline (see
+`docs/historical-training.md`, plan in `.claude/plans/`). 12.1 ingestion done;
+12.2 validation next. The 3–5 ply analysis is a heuristic labeller, not an oracle.
 
 ## Model lifecycle (verified 2026-08-31)
 

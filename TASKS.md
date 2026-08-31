@@ -167,3 +167,30 @@ pass, and the full suite is green.
       loads trained ckpt, frontend rebuild doesn't touch ckpts, interrupted
       training resumes, production protected from unevaluated / worse candidates,
       resolver, no silent V0)
+- [x] RL: potential-based corner-safety reward shaping (`rl/shaping.py`, opt-in
+      via `configs/*.yaml` `shaping:` block); `tests/rl/test_shaping.py`
+- [x] Analysis grading = chess.com Expected Points model (EP lost vs the best
+      move; one `_expected_points` number drives grade + "bot likes" + eval)
+
+## Phase 12 — Historical-game supervised pretraining pipeline
+
+Plan: `docs/historical-training.md`. The 3–5 ply analysis is a heuristic
+labeller, **not an oracle**.
+
+- [x] 12.1 Ingestion — `ingest/` (`GameRecord`, source-pluggable parsers:
+      WThor `.wtb`, our `games.jsonl`, transcripts, generic JSON), cross-source
+      dedup by move signature, `scripts/ingest_games.py`, `docs/game-data-format.md`;
+      `tests/ingest/test_ingest.py`
+- [ ] 12.2 Validation & replay — classify VALID/INVALID/INCOMPLETE/UNSUPPORTED,
+      insert forced passes, compare final discs to recorded result; `validation/`,
+      `scripts/validate_games.py`
+- [ ] 12.3 Short-horizon counterfactual analysis — shallow negamax+alpha-beta
+      (reuse `MinimaxAgent`), regret vs best legal alternative at horizons [3,5],
+      labels BEST/GOOD/ACCEPTABLE/MISTAKE/BLUNDER; `analysis/`, benchmark first
+- [ ] 12.4 Versioned datasets + game-level train/val/test split (no leakage);
+      strategies all / quality-filtered / weighted; `datasets/`
+- [ ] 12.5 Policy(+value) net (`rl/az_network.py`) + supervised imitation
+      pretraining (`rl/supervised.py`, `scripts/pretrain.py`) — NOT RL
+- [ ] 12.6 Eval vs baselines + production + historical; config-driven promotion;
+      `experiments/index.jsonl` tracking; `scripts/iterate.py` loop skeleton
+- [ ] (deferred) AZ-MCTS self-play — `docs/alphazero-plan.md`

@@ -11,6 +11,12 @@ dist/
 !models/*.pt
 webapp_state/
 
+# Historical-game pipeline working data (local; like checkpoints/experiments/).
+# Manifests / stats reports are copied into experiments/ (committed) by the scripts.
+data/raw/
+data/processed/
+data/rejected/
+
 # web front end (Vite + React)
 web/node_modules/
 web/dist/
