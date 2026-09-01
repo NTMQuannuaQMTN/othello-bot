@@ -214,16 +214,27 @@ For a sustained self-improvement loop (hours, not one pass):
 python3 scripts/train_vs_egaroucid.py --hours 8
 ```
 
-A **round** = one match (`--games`, default 8) + one fine-tune. **Elo ladder:**
-the RL bot carries an Elo, starting at `--elo-start` (800). The Egaroucid level it
-faces is `ceil(Elo / --elo-band)` — Elo 0-800 → level 1, 800-1600 → level 2, … —
-clamped to `[--level-start, --level-end]`. Level N's opponent is treated as Elo
-`band · N`; after each round the bot's Elo moves by the standard Elo update
-(K = `--elo-k`, default 24) on that round's score (wins + ½·draws out of `--games`).
-So the Elo drifts to wherever the bot is ~even with the level it currently faces,
-going up and down. An **`elo_history.png`** (Elo vs round and vs compute hours,
-level bands shaded) is written every couple of minutes and at the end;
-`peak_elo.pt` is the model at its highest Elo.
+A **round** = one match (`--games`, default 8) + one fine-tune. The RL bot plays **its analysed best move every move** (`--best-moves`, on by
+default) — no random opening plies (`--opening-plies 0`), so every move it makes
+is the one it thinks is best. Egaroucid's own move jitter still gives a few
+distinct games per round.
+
+**Elo ladder:** the RL bot carries an Elo, starting at `--elo-start` (500).
+Egaroucid has a **level 0**; the level the bot faces is `floor(Elo / --elo-band)`
+— Elo 0-1000 → level 0, 1000-2000 → level 1, … — clamped to `[--level-start,
+--level-end]`. Level N's opponent is treated as Elo `band · (N+1)`; after each
+round the bot's Elo moves by the standard Elo update (K = `--elo-k`, default 24)
+on that round's score (wins + ½·draws out of `--games`). So the Elo drifts to
+wherever the bot is ~even with the level it currently faces, up and down. An
+**`elo_history.png`** (Elo vs round and vs compute hours, level bands shaded) is
+written every couple of minutes and at the end; `peak_elo.pt` is the model at its
+highest Elo.
+
+**Move review:** after each round every RL move is graded `--grade-lookahead`
+plies deep — a move that left the bot worse off than the best available is
+penalised (`--blunder-penalty`) and the better move reinforced, pushing the
+policy away from those mistakes. Each round logs how many moves were flagged and
+the worst one.
 
 In the match the RL bot plays its **analysed best move** by default
 (`--best-moves` — a shallow look-ahead search + corner-safety folded onto the

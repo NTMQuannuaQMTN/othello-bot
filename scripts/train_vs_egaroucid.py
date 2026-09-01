@@ -9,13 +9,20 @@ the model on those games via the project's existing behaviour-cloning path
 **guardrail** that rolls back any update that weakens the bot vs Random).  The
 model is loaded once and fine-tuned in place across every round.
 
-**Elo ladder.** The RL bot has an Elo, starting at ``--elo-start`` (800). The
-Egaroucid level it faces is ``ceil(Elo / --elo-band)`` (Elo 0-800 -> level 1,
-800-1600 -> level 2, ...), clamped to ``[--level-start, --level-end]``. Level N's
-opponent is treated as Elo ``band * N``; after each round the bot's Elo moves
-by the standard Elo update (K = ``--elo-k``) on that round's score — so it drifts
-to wherever it is ~even with the level it currently faces, going up and down. An
-``elo_history.png`` graph (Elo vs round and vs hours) is written as it goes.
+**Elo ladder.** The RL bot has an Elo, starting at ``--elo-start`` (500).
+Egaroucid has a **level 0**; the level the bot faces is
+``floor(Elo / --elo-band)`` (Elo 0-1000 -> level 0, 1000-2000 -> level 1, ...),
+clamped to ``[--level-start, --level-end]``. Level N's opponent is treated as Elo
+``band * (N+1)``; after each round the bot's Elo moves by the standard Elo update
+(K = ``--elo-k``) on that round's score, so it drifts to wherever it is ~even with
+the level it currently faces, up and down. An ``elo_history.png`` graph (Elo vs
+round and vs hours, level bands shaded) is written as it goes.
+
+**Move review.** After each round every RL move is graded ``--grade-lookahead``
+plies deep: a move that left the bot worse off than the best available is
+penalised (``--blunder-penalty``) and the better move reinforced, so the policy
+is pushed away from those mistakes. Each round logs how many moves were flagged
+and the worst one.
 
 Storage is deliberately tiny — **no per-match result files**.  Only:
 
@@ -74,9 +81,15 @@ def _parse_duration(hours, minutes, seconds) -> float:
 
 
 def _level_for_elo(elo: float, band: float, lo: int, hi: int) -> int:
-    """Egaroucid level for an Elo: ``ceil(elo / band)``, clamped to [lo, hi].
-    Elo 0-800 -> 1, 800-1600 -> 2, ... (band = 800)."""
-    return max(lo, min(hi, int(math.ceil(max(1e-9, elo) / band))))
+    """Egaroucid level for an Elo: ``floor(elo / band)``, clamped to [lo, hi].
+    band = 1000 -> Elo 0-1000 = level 0, 1000-2000 = level 1, ..."""
+    return max(lo, min(hi, int(max(0.0, elo) // band)))
+
+
+def _opp_elo(level: int, band: float) -> float:
+    """The Elo the RL bot's rating is scored against at ``level`` — the top of
+    that level's band, so a bot at the band boundary is ~even and ready to move up."""
+    return band * (level + 1)
 
 
 def _elo_update(elo: float, opp_elo: float, score: float, games: int, k: float) -> tuple:
@@ -135,10 +148,11 @@ def _write_elo_plot(out: Path, band: float) -> Optional[Path]:
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 7), sharey=False)
     for ax, x, xl in ((ax1, rounds, "round"), (ax2, hours, "compute hours")):
-        for L in range(1, lvl_max + 2):                 # shade the level bands
-            ax.axhspan((L - 1) * band, L * band, color="C0" if L % 2 else "C1", alpha=0.06)
-            if (L - 1) * band <= max(elo) + band:
+        for L in range(0, lvl_max + 2):                 # shade + label the level bands
+            ax.axhspan(L * band, (L + 1) * band, color="C0" if L % 2 else "C1", alpha=0.06)
+            if L * band <= max(elo) + band:
                 ax.axhline(L * band, color="0.7", lw=0.6, ls=":")
+                ax.text(x[0], L * band + band * 0.04, f"L{L}", fontsize=7, color="0.5")
         ax.plot(x, elo, color="C3", lw=1.4)
         ax.scatter(x, elo, c=level, cmap="viridis", s=10, zorder=3)
         ax.set_xlabel(xl)
@@ -146,7 +160,7 @@ def _write_elo_plot(out: Path, band: float) -> Optional[Path]:
         ax.set_ylim(0, max(band * 1.2, max(elo) * 1.1))
     ax1.set_title(f"Elo over training — start {rows[0]['elo']:.0f}, "
                   f"now {elo[-1]:.0f}, peak {max(elo):.0f}  "
-                  f"(level = ceil(Elo / {band:.0f}))")
+                  f"(level = floor(Elo / {band:.0f}))")
     fig.tight_layout()
     path = out / "elo_history.png"
     fig.savefig(path, dpi=110)
@@ -171,25 +185,32 @@ def main(argv=None) -> int:
                     help="in the match, play the bot's analysed best move (shallow "
                          "search + corner-safety), not the bare policy argmax. Slower "
                          "per round; the fine-tune then clones those stronger moves.")
-    ap.add_argument("--level-start", type=int, default=1)
+    ap.add_argument("--level-start", type=int, default=0, help="Egaroucid has a level 0")
     ap.add_argument("--level-end", type=int, default=20, help="level cap (Egaroucid goes to 60)")
     # --- Elo ladder: the RL bot has an Elo; the Egaroucid level it faces is set
     #     by that Elo, and its Elo moves up/down on each round's result -------------
-    ap.add_argument("--elo-start", type=float, default=800.0,
+    ap.add_argument("--elo-start", type=float, default=500.0,
                     help="the RL bot's starting Elo")
-    ap.add_argument("--elo-band", type=float, default=800.0,
-                    help="Elo per level: level = ceil(elo / band); level N's opponent "
-                         "Elo = band * N. So Elo 0-800 -> level 1, 800-1600 -> level 2, ...")
+    ap.add_argument("--elo-band", type=float, default=1000.0,
+                    help="Elo per level: level = floor(elo / band); level N's opponent "
+                         "Elo = band * (N+1). So Elo 0-1000 -> level 0, 1000-2000 -> level 1, ...")
     ap.add_argument("--elo-k", type=float, default=24.0,
                     help="Elo K-factor per round (bigger = faster swings)")
-    ap.add_argument("--opening-plies", type=int, default=4)
+    ap.add_argument("--opening-plies", type=int, default=0,
+                    help="random opening plies for game variety. 0 = every move is "
+                         "the bot's best move from the start (Egaroucid's own jitter "
+                         "still gives a few distinct games per round)")
     ap.add_argument("--threads", type=int, default=1)
     ap.add_argument("--egaroucid", default=None, help="path to Egaroucid_for_Console.out")
     ap.add_argument("--grad-steps", type=int, default=100)
     ap.add_argument("--lr", type=float, default=None)
-    ap.add_argument("--grade-lookahead", type=int, default=1,
-                    help="negamax depth for grading moves (shaping signal). The "
-                         "big per-round cost — 1 is fast, 3 (the app default) is ~4x slower")
+    ap.add_argument("--grade-lookahead", type=int, default=2,
+                    help="negamax depth for reviewing each move after the round — how "
+                         "far ahead we look to decide a move hurt. Bigger = better "
+                         "bad-move detection, slower (1 fast, 3 the app default)")
+    ap.add_argument("--blunder-penalty", type=float, default=0.8,
+                    help="how hard to push the policy away from a move the review "
+                         "flagged as putting the bot in a worse position")
     ap.add_argument("--guardrail-games", type=int, default=40,
                     help="games vs Random for the before/after rollback check "
                          "(lower = faster, noisier)")
@@ -279,12 +300,15 @@ def main(argv=None) -> int:
 
     print(f"train_vs_egaroucid — {_fmt(duration)} compute budget")
     print(f"  base model : {base_version}  [{base_label}]  ({n_params:,} params)")
-    print(f"  round      : {args.games} games, {args.opening_plies} opening plies, "
-          f"RL plays its {'analysed best move (search + corner-safety)' if args.best_moves else 'policy argmax'}")
+    print(f"  round      : {args.games} games, "
+          f"{args.opening_plies or 'no'} random opening plies; RL plays "
+          f"{'its analysed best move (search + corner-safety) every move' if args.best_moves else 'the policy argmax'}")
     print(f"  Elo ladder : start {prev_elo:.0f}  (K={args.elo_k:.0f}); level = "
-          f"ceil(Elo / {args.elo_band:.0f}), clamped [{args.level_start}, {args.level_end}]; "
-          f"level N faces Elo {args.elo_band:.0f}*N. Elo moves on each round's result.")
-    print(f"  fine-tune  : {ft.grad_steps} grad steps, grade-lookahead {args.grade_lookahead}, "
+          f"floor(Elo / {args.elo_band:.0f}), clamped [{args.level_start}, {args.level_end}]; "
+          f"level N faces Elo {args.elo_band:.0f}*(N+1). Elo moves on each round's result.")
+    print(f"  fine-tune  : {ft.grad_steps} grad steps; after each round every move is "
+          f"reviewed {args.grade_lookahead}-ply deep — bad ones penalised "
+          f"(x{args.blunder_penalty:g}), the better move reinforced; "
           f"guardrail {ft.guardrail_games} games vs Random")
     print(f"  output     : {out}   (candidate — production untouched)")
     print(f"  stop early : Ctrl-C  or  touch {out / 'STOP'}\n")
@@ -369,7 +393,7 @@ def main(argv=None) -> int:
                 _open_engine(level)
                 print(f"[{_fmt(elapsed)}] round {rnd}: Elo {elo:.0f} -> Egaroucid level {level}")
 
-            opp_elo = args.elo_band * level
+            opp_elo = _opp_elo(level, args.elo_band)
             row = {"round": rnd, "t": round(elapsed, 1), "level": level,
                    "elo_before": round(elo, 1), "opp_elo": opp_elo}
             try:
@@ -400,13 +424,27 @@ def main(argv=None) -> int:
             try:
                 rep = finetune_on_records(bot, summ.records, grad_steps=args.grad_steps,
                                           lr=args.lr, guardrail_games=args.guardrail_games,
-                                          grade_lookahead=args.grade_lookahead)
+                                          grade_lookahead=args.grade_lookahead,
+                                          blunder_penalty=args.blunder_penalty)
             except Exception as exc:
                 errors += 1
                 row["error"] = f"finetune: {exc}"
                 progress.write(json.dumps(row) + "\n")
                 print(f"[{_fmt(elapsed)}] round {rnd}: finetune error ({exc})")
                 continue
+
+            # review the round's moves: which ones the look-ahead flagged as bad
+            grades = rep.grades or []
+            pen = [g for g in grades if g.get("penalised")]
+            worst = max(grades, key=lambda g: g.get("drop", 0.0), default=None)
+            row["review"] = {
+                "graded": len(grades),
+                "bad": len(pen),
+                "reinforced": sum(bool(g.get("reinforced")) for g in grades),
+                "worst": ({"san": worst["played_san"], "instead": worst["best_san"],
+                           "ep_lost": round(worst.get("drop", 0.0), 3), "label": worst["label"]}
+                          if worst and worst.get("drop", 0) > 0.05 else None),
+            }
 
             was_kept = not rep.rolled_back
             kept += was_kept
@@ -462,13 +500,17 @@ def main(argv=None) -> int:
             eta = _fmt(max(0.0, deadline - time.monotonic()))
             if rnd % 5 == 0 or is_best or "check" in row:
                 m = row.get("match", {})
+                rv = row.get("review", {})
                 chk = f" check R/G {row['check']['random']:.2f}/{row['check']['greedy']:.2f}" \
                     if "check" in row else ""
+                w = rv.get("worst")
+                worst = f" worst {w['san']}→{w['instead']} (-{w['ep_lost']:.2f})" if w else ""
                 print(f"[{_fmt(elapsed)}] r{rnd:>4} L{row['level']} | "
                       f"match {m.get('rl_w','?')}-{m.get('eg_w','?')} "
                       f"({m.get('win_rate', 0):.0%}) diff {m.get('disc_diff','?'):>6} | "
                       f"Elo {row['elo_before']:.0f}->{elo:.0f} (exp {row['elo_expected']:.1f}/"
                       f"{args.games}, peak {peak_elo:.0f}) | "
+                      f"review {rv.get('bad', 0)} bad/{rv.get('reinforced', 0)} good{worst} | "
                       f"ft {'kept' if was_kept else 'ROLL'}{chk}"
                       f"{'  <- BEST' if is_best else ''} | ETA {eta}")
 

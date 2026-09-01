@@ -376,7 +376,8 @@ def finetune_on_records(bot, records: Sequence[GameRecord], *,
                         grad_steps: Optional[int] = None,
                         lr: Optional[float] = None,
                         guardrail_games: Optional[int] = None,
-                        grade_lookahead: Optional[int] = None):
+                        grade_lookahead: Optional[int] = None,
+                        blunder_penalty: Optional[float] = None):
     """Fine-tune ``bot`` (an ``OthelloBot``) on the games it just played, using
     the project's existing behaviour-cloning + shaping + **guardrail rollback**
     path (`OthelloBot.finetune_from_games`).
@@ -399,6 +400,8 @@ def finetune_on_records(bot, records: Sequence[GameRecord], *,
         bot.ft.guardrail_games = int(guardrail_games)
     if grade_lookahead is not None:
         bot.ft.grade_lookahead = int(grade_lookahead)
+    if blunder_penalty is not None:
+        bot.ft.blunder_penalty = float(blunder_penalty)
     games = records_to_training_games(records)
     if not games:
         raise ValueError("no usable games to train on (all had errors)")
