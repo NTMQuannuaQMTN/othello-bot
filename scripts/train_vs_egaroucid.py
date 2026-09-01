@@ -42,6 +42,13 @@ _SRC = _ROOT / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+import torch  # noqa: E402
+
+# the net is tiny (410k params, 8x8) and every call is a single position — many
+# small forwards, where 1 thread beats N (no thread-pool thrash, esp. next to a
+# multi-threaded Egaroucid).
+torch.set_num_threads(1)
+
 from othello_rl.eval_external import (  # noqa: E402
     EgaroucidEngine, finetune_on_records, records_to_training_games, run_match,
 )
@@ -82,21 +89,29 @@ def _quick_eval2(agent, games: int, seed: int) -> dict:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--hours", type=float, default=None)
+    ap.add_argument("--hours", type=float, default=None,
+                    help="budget of ACTIVE compute time (the clock pauses while the Mac sleeps)")
     ap.add_argument("--minutes", type=float, default=None)
     ap.add_argument("--seconds", type=float, default=None)
+    ap.add_argument("--wall-hours", type=float, default=None,
+                    help="hard wall-clock cap regardless of sleep (default: 3x the compute budget)")
     ap.add_argument("--max-rounds", type=int, default=None, help="also stop after N rounds")
     ap.add_argument("--checkpoint", default=None,
                     help="base checkpoint (default: active model in checkpoints/registry.json)")
-    ap.add_argument("--games", type=int, default=12, help="games per match (default 12)")
+    ap.add_argument("--games", type=int, default=10, help="games per match (default 10)")
     ap.add_argument("--level-start", type=int, default=1)
     ap.add_argument("--level-end", type=int, default=8)
     ap.add_argument("--opening-plies", type=int, default=4)
     ap.add_argument("--threads", type=int, default=1)
     ap.add_argument("--egaroucid", default=None, help="path to Egaroucid_for_Console.out")
-    ap.add_argument("--grad-steps", type=int, default=120)
+    ap.add_argument("--grad-steps", type=int, default=100)
     ap.add_argument("--lr", type=float, default=None)
-    ap.add_argument("--guardrail-games", type=int, default=80)
+    ap.add_argument("--grade-lookahead", type=int, default=1,
+                    help="negamax depth for grading moves (shaping signal). The "
+                         "big per-round cost — 1 is fast, 3 (the app default) is ~4x slower")
+    ap.add_argument("--guardrail-games", type=int, default=40,
+                    help="games vs Random for the before/after rollback check "
+                         "(lower = faster, noisier)")
     ap.add_argument("--anchor-transitions", type=int, default=3000,
                     help="baseline (bot-vs-Random/Greedy) transitions seeded into the buffer")
     ap.add_argument("--anchor-refill-every", type=int, default=20,
@@ -141,6 +156,30 @@ def main(argv=None) -> int:
     (out / "snapshots").mkdir(parents=True, exist_ok=True)
     base_version = Path(str(base_ckpt)).stem if args.checkpoint else reg.model_version
 
+    # -- continue round numbering / counters when resuming --------------
+    prev_rounds = prev_kept = prev_rolled = 0
+    prog_path = out / "progress.jsonl"
+    if args.resume and prog_path.is_file():
+        for line in prog_path.read_text().splitlines():
+            if not line.strip():
+                continue
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            prev_rounds = max(prev_rounds, int(r.get("round", 0)))
+            if isinstance(r.get("ft"), dict):
+                prev_kept += bool(r["ft"].get("kept"))
+                prev_rolled += (not r["ft"].get("kept"))
+        print(f"  resuming after round {prev_rounds} "
+              f"({prev_kept} kept / {prev_rolled} rolled back so far)")
+    prev_best = -1.0
+    if args.resume and (out / "best.json").is_file():
+        try:
+            prev_best = float(json.loads((out / "best.json").read_text()).get("score", -1.0))
+        except (ValueError, OSError):
+            pass
+
     # -- load the model ONCE --------------------------------------------
     ft = FineTuneConfig(
         grad_steps=args.grad_steps, guardrail_games=args.guardrail_games,
@@ -155,20 +194,30 @@ def main(argv=None) -> int:
     print(f"  base model : {base_version}  [{base_label}]  ({n_params:,} params)")
     print(f"  match      : {args.games} games/round, Egaroucid level "
           f"{args.level_start} -> {args.level_end} (ramped), {args.opening_plies} opening plies")
-    print(f"  fine-tune  : {ft.grad_steps} grad steps, guardrail {ft.guardrail_games} games vs Random")
+    print(f"  fine-tune  : {ft.grad_steps} grad steps, grade-lookahead {args.grade_lookahead}, "
+          f"guardrail {ft.guardrail_games} games vs Random")
     print(f"  output     : {out}   (candidate — production untouched)")
     print(f"  stop early : Ctrl-C  or  touch {out / 'STOP'}\n")
 
+    wall_cap = (args.wall_hours * 3600.0) if args.wall_hours else 3.0 * duration
+
     run_meta = {
         "stamp": stamp, "base_checkpoint": str(base_ckpt), "base_version": base_version,
-        "duration_s": duration, "config": vars(args), "started": datetime.now().isoformat(timespec="seconds"),
-        "status": "running",
+        "duration_s": duration, "wall_cap_s": wall_cap, "config": vars(args),
+        "started": datetime.now().isoformat(timespec="seconds"),
+        "resumed_after_round": prev_rounds or None, "status": "running",
     }
     (out / "run.json").write_text(json.dumps(run_meta, indent=2) + "\n")
-    progress = (out / "progress.jsonl").open("a", buffering=1)
+    progress = prog_path.open("a", buffering=1)
 
     # -- the loop ----------------------------------------------------
+    # `duration` is a budget of ACTIVE compute: time.monotonic() does not advance
+    # while the Mac is asleep, so a sleepy laptop just does fewer rounds rather
+    # than "finishing" in 8h of mostly-frozen wall time. `wall_cap` stops it for
+    # real. Run under `caffeinate` (and keep it on power / lid open) for a true
+    # 8-hour run.
     t0 = time.monotonic()
+    w0 = time.time()
     deadline = t0 + duration
     stop = {"flag": False}
     signal.signal(signal.SIGINT, lambda *_: stop.__setitem__("flag", True))
@@ -176,10 +225,14 @@ def main(argv=None) -> int:
 
     engine = None
     cur_level = None
-    rnd = kept = rolled = errors = 0
+    rnd = prev_rounds
+    kept = prev_kept
+    rolled = prev_rolled
+    errors = 0
     ema_wr = None
-    best_wr = -1.0
+    best_wr = prev_best
     hours_saved = set()
+    slept_s = 0.0
 
     def _open_engine(level: int):
         nonlocal engine, cur_level
@@ -201,10 +254,21 @@ def main(argv=None) -> int:
             if (out / "STOP").exists():
                 print("STOP file found — finishing up.")
                 break
-            if args.max_rounds and rnd >= args.max_rounds:
+            if args.max_rounds and rnd - prev_rounds >= args.max_rounds:
+                break
+            if time.time() - w0 >= wall_cap:
+                print(f"wall-clock cap ({_fmt(wall_cap)}) reached — stopping.")
                 break
             rnd += 1
-            elapsed = time.monotonic() - t0
+            now_mono = time.monotonic()
+            # a big wall gap with almost no monotonic movement == the Mac slept
+            gap = (time.time() - w0) - (now_mono - t0)
+            if gap - slept_s > 120:
+                just_slept = gap - slept_s
+                slept_s = gap
+                print(f"[{_fmt(now_mono - t0)}] (was asleep ~{_fmt(just_slept)} — "
+                      f"compute clock paused; run under `caffeinate` to avoid this)")
+            elapsed = now_mono - t0
             level = _ramp_level(elapsed, duration, args.level_start, args.level_end)
             if level != cur_level:
                 _open_engine(level)
@@ -231,7 +295,8 @@ def main(argv=None) -> int:
 
             try:
                 rep = finetune_on_records(bot, summ.records, grad_steps=args.grad_steps,
-                                          lr=args.lr, guardrail_games=args.guardrail_games)
+                                          lr=args.lr, guardrail_games=args.guardrail_games,
+                                          grade_lookahead=args.grade_lookahead)
             except Exception as exc:
                 errors += 1
                 row["error"] = f"finetune: {exc}"
@@ -296,8 +361,9 @@ def main(argv=None) -> int:
 
             run_meta.update(status="running", rounds=rnd, kept=kept, rolled_back=rolled,
                             errors=errors, best_score=round(best_wr, 3),
-                            wr_rand_ema=round(ema_wr, 3),
-                            current_level=level, elapsed_s=round(elapsed, 1))
+                            wr_rand_ema=round(ema_wr, 3), current_level=level,
+                            compute_s=round(elapsed, 1), wall_s=round(time.time() - w0, 1),
+                            slept_s=round(slept_s, 1))
             (out / "run.json").write_text(json.dumps(run_meta, indent=2) + "\n")
     except KeyboardInterrupt:
         stop["flag"] = True
@@ -313,9 +379,18 @@ def main(argv=None) -> int:
 
     # -- finalise --------------------------------------------------
     _save(out / "final.pt")
+    # guarantee a best.pt: if nothing was ever kept / beat the base, best == base
+    best_pt = out / "best.pt"
+    if not best_pt.is_file():
+        shutil.copyfile(base_ckpt, best_pt)
+        (out / "best.json").write_text(json.dumps(
+            {"round": 0, "note": "no round beat the base — best == base", "vs": None}, indent=2) + "\n")
     elapsed = time.monotonic() - t0
-    print(f"\n{'=' * 60}\ntraining loop ended after {_fmt(elapsed)} — "
-          f"{rnd} rounds, {kept} kept, {rolled} rolled back, {errors} errors")
+    new_rounds = rnd - prev_rounds
+    print(f"\n{'=' * 60}\ntraining loop ended — {_fmt(elapsed)} compute"
+          f"{f' (+{_fmt(slept_s)} asleep)' if slept_s > 60 else ''}, "
+          f"{new_rounds} rounds this run / {rnd} total, "
+          f"{kept} kept, {rolled} rolled back, {errors} errors")
 
     print("\nfinal eval (this takes a couple of minutes) …")
     base_agent = OthelloBot.load(str(base_ckpt)).agent
@@ -323,7 +398,6 @@ def main(argv=None) -> int:
         "base": _quick_eval(base_agent, args.eval_games, args.seed + 1),
         "final": _quick_eval(bot.agent, args.eval_games, args.seed + 1),
     }
-    best_pt = out / "best.pt"
     if best_pt.is_file():
         from othello_rl.rl.checkpoint import load_agent
         ev["best"] = _quick_eval(load_agent(best_pt), args.eval_games, args.seed + 1)

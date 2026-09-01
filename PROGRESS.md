@@ -37,7 +37,15 @@ forward pass — no search). Results in `results/egaroucid/`.
   `progress.jsonl` + `run.json` under `checkpoints/experiments/egaroucid_train_<stamp>/`
   (git-ignored). `best.pt` by a periodic vs-Random+Greedy check; anchor buffer
   refilled every N rounds; engine auto-restarts; `Ctrl-C`/`touch STOP` finalises;
-  `--resume <dir>`. Ends with a base-vs-final-vs-best eval. Production untouched.
+  `--resume <dir>` continues rounds/log/best. Ends with a base-vs-final-vs-best eval.
+  Production untouched.
+  - **Speed:** the per-round cost is *grading* moves for shaping — `--grade-lookahead 1`
+    (default) ≈ 5 s/round; the app default `3` is ~10× slower. `--hours` = active
+    compute (`time.monotonic()` freezes during sleep); run under `caffeinate` for a
+    real 8-hour run; `--wall-hours` is a hard cap.
+  - So far (~40 rounds) training on Egaroucid blowout losses has **not** improved
+    the model vs Random/Greedy — `best.pt` ≈ base. Expected: the gradient from
+    60-0 losses is weak. The final eval is the real verdict.
 - Model architecture / training data / training config / production checkpoint /
   registry unchanged; added `eval_external/`, the script, `tests/eval_external/`
   (21) and `results/egaroucid/`. Engine folder + `.DS_Store` git-ignored. Docs:

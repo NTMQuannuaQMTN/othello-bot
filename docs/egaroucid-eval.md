@@ -231,9 +231,28 @@ checkpoints/experiments/egaroucid_train_<stamp>/     (git-ignored)
 rounds (not the noisy guardrail number). The anchor (baseline) buffer is topped
 up every `--anchor-refill-every` rounds so a long run can't slowly forget how to
 beat Random. Stop early with `Ctrl-C` or `touch <out>/STOP` — it still finalises
-(saves `final.pt`, runs the eval). Resume a killed run with
-`--resume <out-dir>`. Key knobs: `--games`, `--grad-steps`, `--guardrail-games`,
-`--level-start/-end`, `--hours/--minutes/--seconds`, `--max-rounds`.
+(saves `final.pt`, runs the eval). Resume a killed run with `--resume <out-dir>`
+(continues the round count, log and best-score).
+
+**Speed** — a round is dominated by *grading* each move for the shaping signal
+(a shallow negamax per legal move). `--grade-lookahead` controls its depth:
+`1` (default here) is ~5 s/round; the web-app default of `3` is ~4–10× slower.
+`--guardrail-games` and `--games` are the next levers. Knobs:
+`--games`, `--grad-steps`, `--grade-lookahead`, `--guardrail-games`,
+`--level-start/-end`, `--hours` (**budget of *active* compute** — see below),
+`--wall-hours` (hard cap), `--max-rounds`, `--threads` (Egaroucid).
+
+**Sleep** — `--hours` counts *active* compute: `time.monotonic()` freezes while
+the Mac sleeps, so a laptop that sleeps overnight just does fewer rounds rather
+than "finishing" 8 h of frozen time. For a real 8-hour run keep it awake:
+
+```bash
+caffeinate -ims nice -n 5 python3 -u scripts/train_vs_egaroucid.py --hours 8 \
+    --grade-lookahead 1 --guardrail-games 25 --games 8 >> run.log 2>&1 &
+```
+
+(`caffeinate -s` needs AC power; lid-closed on battery still sleeps.) A
+`--wall-hours` cap (default 3× the compute budget) stops it for real regardless.
 
 Production and the registry are never touched; when the run ends, evaluate the
 candidate with `scripts/eval_bot.py --checkpoint <out>/best.pt --vs-production`
