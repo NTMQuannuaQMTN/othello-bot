@@ -9,22 +9,25 @@ the model on those games via the project's existing behaviour-cloning path
 **guardrail** that rolls back any update that weakens the bot vs Random).  The
 model is loaded once and fine-tuned in place across every round.
 
-Structure: a **round** is one match (``--games``, default 8) + one fine-tune. A
-**session** is ``--session-rounds`` rounds (default 100). Within a session
-Egaroucid starts at ``--level-start`` and moves **up one level after any round the
-RL bot scores >= --levelup-winrate** (default 50%, e.g. 4/8) — earned, never a
-step down, capped at ``--level-end``. At each session boundary the level resets to
-``--level-start`` — a repeated level-1-and-up ladder.
+**Elo ladder.** The RL bot has an Elo, starting at ``--elo-start`` (800). The
+Egaroucid level it faces is ``ceil(Elo / --elo-band)`` (Elo 0-800 -> level 1,
+800-1600 -> level 2, ...), clamped to ``[--level-start, --level-end]``. Level N's
+opponent is treated as Elo ``band * N``; after each round the bot's Elo moves
+by the standard Elo update (K = ``--elo-k``) on that round's score — so it drifts
+to wherever it is ~even with the level it currently faces, going up and down. An
+``elo_history.png`` graph (Elo vs round and vs hours) is written as it goes.
 
 Storage is deliberately tiny — **no per-match result files**.  Only:
 
     checkpoints/experiments/egaroucid_train_<stamp>/
-      latest.pt          most recent kept model              (overwritten)
-      best.pt  best.json  best by smoothed win% vs Random     (overwritten)
+      latest.pt          most recent kept model               (overwritten)
+      best.pt  best.json  best by win% vs Random+Greedy        (overwritten)
+      peak_elo.pt         the model at its highest Elo
       snapshots/hNN.pt    one per elapsed hour
-      final.pt           the model when the run ends
-      progress.jsonl     one compact numeric row per round
-      run.json           config + live status + final eval
+      final.pt            the model when the run ends
+      progress.jsonl      one compact numeric row per round (elo, level, result)
+      elo_history.png     Elo over time
+      run.json            config + live status + final eval
 
 Stop early: ``Ctrl-C``, or ``touch <out>/STOP``.  Nothing here ever writes to
 `checkpoints/production/` or `checkpoints/registry.json`; the result is a
@@ -35,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import shutil
 import signal
 import sys
@@ -69,9 +73,17 @@ def _parse_duration(hours, minutes, seconds) -> float:
     return total if total > 0 else 8 * 3600.0
 
 
-# Level progression is EARNED, not timed: start at --level-start and step up one
-# level (capped at --level-end) after any session the RL bot scores
-# >= --levelup-winrate (draw = 0.5). It never steps back down.
+def _level_for_elo(elo: float, band: float, lo: int, hi: int) -> int:
+    """Egaroucid level for an Elo: ``ceil(elo / band)``, clamped to [lo, hi].
+    Elo 0-800 -> 1, 800-1600 -> 2, ... (band = 800)."""
+    return max(lo, min(hi, int(math.ceil(max(1e-9, elo) / band))))
+
+
+def _elo_update(elo: float, opp_elo: float, score: float, games: int, k: float) -> tuple:
+    """One round of Elo. ``score`` = wins + 0.5*draws out of ``games``.
+    Returns ``(new_elo, expected_score)`` (expected out of ``games``)."""
+    expected = games / (1.0 + 10.0 ** ((opp_elo - elo) / 400.0))
+    return max(0.0, elo + k * (score - expected)), expected
 
 
 def _fmt(sec: float) -> str:
@@ -90,6 +102,58 @@ def _quick_eval2(agent, games: int, seed: int) -> dict:
     return _quick_eval(agent, games, seed, opps=("random", "greedy"))
 
 
+def _write_elo_plot(out: Path, band: float) -> Optional[Path]:
+    """Plot the RL bot's Elo over rounds (and over hours) from progress.jsonl.
+    Regenerable at any time — safe to call repeatedly."""
+    rows = []
+    p = out / "progress.jsonl"
+    if not p.is_file():
+        return None
+    for line in p.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            r = json.loads(line)
+        except ValueError:
+            continue
+        if "elo" in r:
+            rows.append(r)
+    if len(rows) < 2:
+        return None
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception:
+        return None
+
+    rounds = [r["round"] for r in rows]
+    elo = [r["elo"] for r in rows]
+    hours = [r.get("t", 0) / 3600.0 for r in rows]
+    level = [r.get("level", 1) for r in rows]
+    lvl_max = max(level)
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 7), sharey=False)
+    for ax, x, xl in ((ax1, rounds, "round"), (ax2, hours, "compute hours")):
+        for L in range(1, lvl_max + 2):                 # shade the level bands
+            ax.axhspan((L - 1) * band, L * band, color="C0" if L % 2 else "C1", alpha=0.06)
+            if (L - 1) * band <= max(elo) + band:
+                ax.axhline(L * band, color="0.7", lw=0.6, ls=":")
+        ax.plot(x, elo, color="C3", lw=1.4)
+        ax.scatter(x, elo, c=level, cmap="viridis", s=10, zorder=3)
+        ax.set_xlabel(xl)
+        ax.set_ylabel("RL bot Elo (training ladder)")
+        ax.set_ylim(0, max(band * 1.2, max(elo) * 1.1))
+    ax1.set_title(f"Elo over training — start {rows[0]['elo']:.0f}, "
+                  f"now {elo[-1]:.0f}, peak {max(elo):.0f}  "
+                  f"(level = ceil(Elo / {band:.0f}))")
+    fig.tight_layout()
+    path = out / "elo_history.png"
+    fig.savefig(path, dpi=110)
+    plt.close(fig)
+    return path
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -103,19 +167,21 @@ def main(argv=None) -> int:
     ap.add_argument("--checkpoint", default=None,
                     help="base checkpoint (default: active model in checkpoints/registry.json)")
     ap.add_argument("--games", type=int, default=8, help="games per round (default 8)")
-    ap.add_argument("--session-rounds", type=int, default=100,
-                    help="rounds per session; at each session boundary the level "
-                         "resets to --level-start (a repeated level-1-up ladder)")
     ap.add_argument("--best-moves", action=argparse.BooleanOptionalAction, default=True,
                     help="in the match, play the bot's analysed best move (shallow "
                          "search + corner-safety), not the bare policy argmax. Slower "
                          "per round; the fine-tune then clones those stronger moves.")
     ap.add_argument("--level-start", type=int, default=1)
-    ap.add_argument("--level-end", type=int, default=12, help="level cap (Egaroucid goes to 60)")
-    ap.add_argument("--levelup-winrate", type=float, default=0.5,
-                    help="RL session win rate (draw=0.5) needed to move up a level")
-    ap.add_argument("--levelup-streak", type=int, default=1,
-                    help="consecutive sessions at/above --levelup-winrate before moving up")
+    ap.add_argument("--level-end", type=int, default=20, help="level cap (Egaroucid goes to 60)")
+    # --- Elo ladder: the RL bot has an Elo; the Egaroucid level it faces is set
+    #     by that Elo, and its Elo moves up/down on each round's result -------------
+    ap.add_argument("--elo-start", type=float, default=800.0,
+                    help="the RL bot's starting Elo")
+    ap.add_argument("--elo-band", type=float, default=800.0,
+                    help="Elo per level: level = ceil(elo / band); level N's opponent "
+                         "Elo = band * N. So Elo 0-800 -> level 1, 800-1600 -> level 2, ...")
+    ap.add_argument("--elo-k", type=float, default=24.0,
+                    help="Elo K-factor per round (bigger = faster swings)")
     ap.add_argument("--opening-plies", type=int, default=4)
     ap.add_argument("--threads", type=int, default=1)
     ap.add_argument("--egaroucid", default=None, help="path to Egaroucid_for_Console.out")
@@ -171,13 +237,12 @@ def main(argv=None) -> int:
     (out / "snapshots").mkdir(parents=True, exist_ok=True)
     base_version = Path(str(base_ckpt)).stem if args.checkpoint else reg.model_version
 
-    # -- continue round numbering / counters / level when resuming ------
+    # -- continue round numbering / counters / Elo when resuming -------
     prev_rounds = prev_kept = prev_rolled = 0
-    prev_level = args.level_start
-    prev_streak = 0
+    prev_elo = args.elo_start
+    prev_peak_elo = args.elo_start
     prog_path = out / "progress.jsonl"
     if args.resume and prog_path.is_file():
-        last_level = args.level_start
         for line in prog_path.read_text().splitlines():
             if not line.strip():
                 continue
@@ -187,22 +252,15 @@ def main(argv=None) -> int:
                 continue
             rr = int(r.get("round", 0))
             if rr >= prev_rounds:
-                prev_rounds, last_level = rr, int(r.get("level", args.level_start))
+                prev_rounds = rr
+                prev_elo = float(r.get("elo", args.elo_start))
+            prev_peak_elo = max(prev_peak_elo, float(r.get("elo", args.elo_start)))
             if isinstance(r.get("ft"), dict):
                 prev_kept += bool(r["ft"].get("kept"))
                 prev_rolled += (not r["ft"].get("kept"))
-        prev_level = last_level               # within-session level of the last round
-        print(f"  resuming after round {prev_rounds} at level {prev_level} "
+        print(f"  resuming after round {prev_rounds} at Elo {prev_elo:.0f} "
               f"({prev_kept} kept / {prev_rolled} rolled back so far)")
-    _sr = max(1, args.session_rounds)
-    session = ((prev_rounds - 1) // _sr + 1) if prev_rounds > 0 else 1
     prev_best = -1.0
-    if args.resume and (out / "run.json").is_file():
-        try:
-            _r = json.loads((out / "run.json").read_text())
-            prev_streak = int(_r.get("level_streak", 0))
-        except (ValueError, OSError):
-            pass
     if args.resume and (out / "best.json").is_file():
         try:
             prev_best = float(json.loads((out / "best.json").read_text()).get("score", -1.0))
@@ -223,11 +281,9 @@ def main(argv=None) -> int:
     print(f"  base model : {base_version}  [{base_label}]  ({n_params:,} params)")
     print(f"  round      : {args.games} games, {args.opening_plies} opening plies, "
           f"RL plays its {'analysed best move (search + corner-safety)' if args.best_moves else 'policy argmax'}")
-    print(f"  session    : {args.session_rounds} rounds, then reset to level {args.level_start}")
-    print(f"  level      : start {args.level_start}, cap {args.level_end}; +1 after "
-          f"{args.levelup_streak}x round win rate >= {args.levelup_winrate:.0%} (e.g. "
-          f"{int(round(args.levelup_winrate * args.games))}/{args.games})"
-          f"{f'  [resuming: session {session}, level {prev_level}]' if args.resume else ''}")
+    print(f"  Elo ladder : start {prev_elo:.0f}  (K={args.elo_k:.0f}); level = "
+          f"ceil(Elo / {args.elo_band:.0f}), clamped [{args.level_start}, {args.level_end}]; "
+          f"level N faces Elo {args.elo_band:.0f}*N. Elo moves on each round's result.")
     print(f"  fine-tune  : {ft.grad_steps} grad steps, grade-lookahead {args.grade_lookahead}, "
           f"guardrail {ft.guardrail_games} games vs Random")
     print(f"  output     : {out}   (candidate — production untouched)")
@@ -259,8 +315,9 @@ def main(argv=None) -> int:
 
     engine = None
     cur_level = None
-    level = max(args.level_start, prev_level)     # within-session level (survives resume)
-    level_streak = prev_streak
+    elo = prev_elo
+    peak_elo = prev_peak_elo
+    level = _level_for_elo(elo, args.elo_band, args.level_start, args.level_end)
     rnd = prev_rounds
     kept = prev_kept
     rolled = prev_rolled
@@ -268,6 +325,7 @@ def main(argv=None) -> int:
     ema_wr = None
     best_wr = prev_best
     hours_saved = set()
+    plot_at = 0
     slept_s = 0.0
     match_bot = BestMoveBot(bot) if args.best_moves else bot   # how RL picks moves in the match
 
@@ -297,12 +355,7 @@ def main(argv=None) -> int:
                 print(f"wall-clock cap ({_fmt(wall_cap)}) reached — stopping.")
                 break
             rnd += 1
-            session_now = (rnd - 1) // _sr + 1
-            if session_now != session:               # new session -> restart the ladder
-                session = session_now
-                level = args.level_start
-                level_streak = 0
-                print(f"\n=== session {session} (round {rnd}) — back to level {level} ===")
+            level = _level_for_elo(elo, args.elo_band, args.level_start, args.level_end)
             now_mono = time.monotonic()
             # a big wall gap with almost no monotonic movement == the Mac slept
             gap = (time.time() - w0) - (now_mono - t0)
@@ -314,30 +367,24 @@ def main(argv=None) -> int:
             elapsed = now_mono - t0
             if level != cur_level:
                 _open_engine(level)
-                print(f"[{_fmt(elapsed)}] round {rnd}: Egaroucid level -> {level}"
-                      f"{'  (EARNED)' if level > args.level_start else ''}")
+                print(f"[{_fmt(elapsed)}] round {rnd}: Elo {elo:.0f} -> Egaroucid level {level}")
 
-            row = {"round": rnd, "session": session, "t": round(elapsed, 1), "level": level}
+            opp_elo = args.elo_band * level
+            row = {"round": rnd, "t": round(elapsed, 1), "level": level,
+                   "elo_before": round(elo, 1), "opp_elo": opp_elo}
             try:
                 summ = run_match(match_bot, engine, games=args.games,
                                  opening_plies=args.opening_plies,
                                  seed=args.seed + rnd * 7919, verbose=False)
+                score = summ.rl_wins + 0.5 * summ.draws
+                elo, expected = _elo_update(elo, opp_elo, score, args.games, args.elo_k)
+                peak_elo = max(peak_elo, elo)
                 row["match"] = {"rl_w": summ.rl_wins, "eg_w": summ.egaroucid_wins,
                                 "draw": summ.draws, "disc_diff": round(summ.mean_disc_diff, 1),
                                 "rl_score": round(summ.rl_mean_score, 1),
                                 "win_rate": round(summ.win_rate, 3)}
-                # earn the next level: a round scored >= --levelup-winrate (e.g. 4/8)
-                if summ.win_rate >= args.levelup_winrate:
-                    level_streak += 1
-                    if level_streak >= args.levelup_streak and level < args.level_end:
-                        level += 1
-                        row["level_up"] = level
-                        print(f"[{_fmt(elapsed)}] round {rnd}: RL scored "
-                              f"{summ.win_rate:.0%} ({summ.rl_wins}/{args.games}) "
-                              f"-> level up to {level}")
-                        level_streak = 0
-                else:
-                    level_streak = 0
+                row["elo"] = round(elo, 1)
+                row["elo_expected"] = round(expected, 2)      # expected wins out of --games
             except Exception as exc:  # engine hiccup — restart and skip the round
                 errors += 1
                 row["error"] = f"match: {exc}"
@@ -390,14 +437,21 @@ def main(argv=None) -> int:
                             {"round": rnd, "elapsed_s": round(elapsed, 1), "score": round(score, 3),
                              "vs": bev, "version": rep.version, "level": level}, indent=2) + "\n")
 
+                if was_kept and elo >= peak_elo - 1e-9:
+                    _save(out / "peak_elo.pt", elo=round(elo, 1))
+
                 h = int(elapsed // 3600)
                 if h >= 1 and h not in hours_saved:
                     hours_saved.add(h)
-                    _save(out / "snapshots" / f"h{h:02d}.pt")
+                    _save(out / "snapshots" / f"h{h:02d}.pt", elo=round(elo, 1))
 
                 if args.anchor_refill_every and rnd % args.anchor_refill_every == 0:
                     bot._ensure_buffer()
                     bot._fill_anchor(args.anchor_refill)   # top the baseline games back up
+
+                if elapsed - plot_at > 120:            # refresh the Elo graph ~every 2 min
+                    plot_at = elapsed
+                    _write_elo_plot(out, args.elo_band)
             except Exception as exc:
                 errors += 1
                 row["bookkeeping_error"] = str(exc)
@@ -410,18 +464,19 @@ def main(argv=None) -> int:
                 m = row.get("match", {})
                 chk = f" check R/G {row['check']['random']:.2f}/{row['check']['greedy']:.2f}" \
                     if "check" in row else ""
-                print(f"[{_fmt(elapsed)}] s{session} r{rnd:>4} L{row['level']} | "
+                print(f"[{_fmt(elapsed)}] r{rnd:>4} L{row['level']} | "
                       f"match {m.get('rl_w','?')}-{m.get('eg_w','?')} "
                       f"({m.get('win_rate', 0):.0%}) diff {m.get('disc_diff','?'):>6} | "
-                      f"ft {'kept ' if was_kept else 'ROLL '}"
-                      f"wr_rand {row['ft']['wr_rand'][0]:.2f}->{wr:.2f} ema {ema_wr:.3f}{chk}"
-                      f"{f'  ↑L{level}' if 'level_up' in row else ''}"
-                      f"{'  <- BEST' if is_best else ''} | kept {kept}/{rnd} | ETA {eta}")
+                      f"Elo {row['elo_before']:.0f}->{elo:.0f} (exp {row['elo_expected']:.1f}/"
+                      f"{args.games}, peak {peak_elo:.0f}) | "
+                      f"ft {'kept' if was_kept else 'ROLL'}{chk}"
+                      f"{'  <- BEST' if is_best else ''} | ETA {eta}")
 
-            run_meta.update(status="running", rounds=rnd, session=session, kept=kept,
+            run_meta.update(status="running", rounds=rnd, kept=kept,
                             rolled_back=rolled, errors=errors, best_score=round(best_wr, 3),
                             wr_rand_ema=round(ema_wr, 3), current_level=level,
-                            level_streak=level_streak, round_win_rate=round(summ.win_rate, 3),
+                            elo=round(elo, 1), peak_elo=round(peak_elo, 1),
+                            round_win_rate=round(summ.win_rate, 3),
                             compute_s=round(elapsed, 1), wall_s=round(time.time() - w0, 1),
                             slept_s=round(slept_s, 1))
             (out / "run.json").write_text(json.dumps(run_meta, indent=2) + "\n")
@@ -445,19 +500,19 @@ def main(argv=None) -> int:
         shutil.copyfile(base_ckpt, best_pt)
         (out / "best.json").write_text(json.dumps(
             {"round": 0, "note": "no round beat the base — best == base", "vs": None}, indent=2) + "\n")
+    if not (out / "peak_elo.pt").is_file():          # Elo never rose above its start
+        shutil.copyfile(base_ckpt, out / "peak_elo.pt")
     elapsed = time.monotonic() - t0
     new_rounds = rnd - prev_rounds
     print(f"\n{'=' * 60}\ntraining loop ended — {_fmt(elapsed)} compute"
           f"{f' (+{_fmt(slept_s)} asleep)' if slept_s > 60 else ''}, "
-          f"{new_rounds} rounds this run / {rnd} total across {session} session(s), "
+          f"{new_rounds} rounds this run / {rnd} total, "
           f"{kept} kept, {rolled} rolled back, {errors} errors")
-    # highest level reached in any session
-    try:
-        _hl = max((json.loads(l).get("level", 1)
-                   for l in prog_path.read_text().splitlines() if l.strip()), default=1)
-        print(f"highest Egaroucid level reached: {_hl}")
-    except OSError:
-        pass
+    print(f"Elo: start {prev_elo:.0f}  ->  end {elo:.0f}   (peak {peak_elo:.0f}, "
+          f"highest level {_level_for_elo(peak_elo, args.elo_band, args.level_start, args.level_end)})")
+    plot = _write_elo_plot(out, args.elo_band)
+    if plot:
+        print(f"Elo-over-time graph: {plot}")
 
     print("\nfinal eval (this takes a couple of minutes) …")
     base_agent = OthelloBot.load(str(base_ckpt)).agent
@@ -476,8 +531,10 @@ def main(argv=None) -> int:
     run_meta.update(status="done", ended=datetime.now().isoformat(timespec="seconds"),
                     rounds=rnd, kept=kept, rolled_back=rolled, errors=errors,
                     elapsed_s=round(elapsed, 1), eval=ev,
+                    elo_start=round(prev_elo, 1), elo_end=round(elo, 1), peak_elo=round(peak_elo, 1),
                     checkpoints={"final": str(out / "final.pt"),
                                  "best": str(best_pt) if best_pt.is_file() else None,
+                                 "peak_elo": str(out / "peak_elo.pt") if (out / "peak_elo.pt").is_file() else None,
                                  "latest": str(out / "latest.pt")})
     (out / "run.json").write_text(json.dumps(run_meta, indent=2) + "\n")
     progress.close()

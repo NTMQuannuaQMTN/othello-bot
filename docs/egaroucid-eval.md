@@ -214,14 +214,16 @@ For a sustained self-improvement loop (hours, not one pass):
 python3 scripts/train_vs_egaroucid.py --hours 8
 ```
 
-A **round** = one match (`--games`, default 8) + one fine-tune. A **session** =
-`--session-rounds` rounds (default 100). Within a session Egaroucid starts at
-`--level-start` (1) and **moves up one level after any round the RL bot scores ≥
-`--levelup-winrate`** (default 0.5, e.g. 4/8; draw = 0.5) — earned, never a step
-back down, capped at `--level-end` (`--levelup-streak N` requires N such rounds in
-a row). At each **session boundary the level resets to 1** — a repeated
-climb-from-level-1 ladder, so the model keeps practising the easy rungs while it
-pushes up.
+A **round** = one match (`--games`, default 8) + one fine-tune. **Elo ladder:**
+the RL bot carries an Elo, starting at `--elo-start` (800). The Egaroucid level it
+faces is `ceil(Elo / --elo-band)` — Elo 0-800 → level 1, 800-1600 → level 2, … —
+clamped to `[--level-start, --level-end]`. Level N's opponent is treated as Elo
+`band · N`; after each round the bot's Elo moves by the standard Elo update
+(K = `--elo-k`, default 24) on that round's score (wins + ½·draws out of `--games`).
+So the Elo drifts to wherever the bot is ~even with the level it currently faces,
+going up and down. An **`elo_history.png`** (Elo vs round and vs compute hours,
+level bands shaded) is written every couple of minutes and at the end;
+`peak_elo.pt` is the model at its highest Elo.
 
 In the match the RL bot plays its **analysed best move** by default
 (`--best-moves` — a shallow look-ahead search + corner-safety folded onto the
@@ -253,9 +255,9 @@ beat Random. Stop early with `Ctrl-C` or `touch <out>/STOP` — it still finalis
 `1` (default here) is ~5 s/round; the web-app default of `3` is ~4–10× slower.
 `--guardrail-games` and `--games` are the next levers. Knobs:
 `--games`, `--grad-steps`, `--grade-lookahead`, `--guardrail-games`,
-`--level-start/-end`, `--levelup-winrate`, `--levelup-streak`,
-`--hours` (**budget of *active* compute** — see below), `--wall-hours` (hard
-cap), `--max-rounds`, `--threads` (Egaroucid).
+`--level-start/-end`, `--elo-start`, `--elo-band`, `--elo-k`, `--best-moves` /
+`--no-best-moves`, `--hours` (**budget of *active* compute** — see below),
+`--wall-hours` (hard cap), `--max-rounds`, `--threads` (Egaroucid).
 
 **Sleep** — `--hours` counts *active* compute: `time.monotonic()` freezes while
 the Mac sleeps, so a laptop that sleeps overnight just does fewer rounds rather

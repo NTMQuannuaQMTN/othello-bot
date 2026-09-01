@@ -366,21 +366,27 @@ def test_train_vs_egaroucid_end_to_end_if_available(tmp_path):
     spec.loader.exec_module(mod)
     out = tmp_path / "run"
     rc = mod.main([
-        "--seconds", "3", "--games", "2", "--level-start", "1", "--level-end", "1",
+        "--seconds", "4", "--games", "2", "--level-start", "1", "--level-end", "3",
+        "--elo-start", "800", "--elo-band", "400", "--elo-k", "80",
         "--grad-steps", "2", "--guardrail-games", "4", "--anchor-transitions", "40",
         "--best-eval-every", "1", "--best-eval-games", "6", "--eval-games", "6",
-        "--out", str(out),
+        "--no-best-moves", "--out", str(out),
     ])
     assert rc == 0
     assert (out / "final.pt").is_file()
     assert (out / "progress.jsonl").is_file()
+    assert (out / "peak_elo.pt").is_file()
     run = json.loads((out / "run.json").read_text())
     assert run["status"] == "done"
     assert run["rounds"] >= 1
     assert set(run["eval"]) == {"base", "final", "best"}
-    # every progress row is valid json with the expected shape
+    assert "elo_end" in run and "peak_elo" in run
+    # every progress row is valid json with elo + a level derived from it
     rows = [json.loads(l) for l in (out / "progress.jsonl").read_text().splitlines() if l.strip()]
-    assert rows and all("round" in r and "level" in r for r in rows)
+    assert rows and all({"round", "level", "elo", "opp_elo"} <= set(r) for r in rows)
+    # level tracks Elo: ceil(elo / band), clamped
+    for r in rows:
+        assert r["level"] == max(1, min(3, mod.math.ceil(max(1e-9, r["elo_before"]) / 400)))
 
 
 # --------------------------------------------------------------------------- #

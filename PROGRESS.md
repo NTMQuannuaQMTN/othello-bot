@@ -31,12 +31,14 @@ forward pass — no search). Results in `results/egaroucid/`.
   `checkpoints/production/` + `registry.json` are never touched, promotion stays
   `scripts/promote_model.py`. Example: fine-tune #1 kept, win% vs Random
   0.933→0.900 (within guardrail). Learning from 10 losses doesn't dent Egaroucid.
-- **`scripts/train_vs_egaroucid.py --hours 8`:** unattended play→fine-tune loop
-  until a deadline. **round** = 1 match (`--games` 8) + 1 fine-tune; **session** =
-  `--session-rounds` (100). Within a session Egaroucid starts at `--level-start`
-  (1) and moves up a level after any round the RL bot scores ≥ `--levelup-winrate`
-  (0.5, e.g. 4/8) — earned, never down, capped; at each session boundary the level
-  resets to 1 (a repeated climb-from-1 ladder).
+- **`scripts/train_vs_egaroucid.py --hours 5`:** unattended play→fine-tune loop
+  until a deadline. **round** = 1 match (`--games` 8) + 1 fine-tune. **Elo ladder:**
+  the RL bot has an Elo (`--elo-start` 800); the Egaroucid level it faces =
+  `ceil(Elo / --elo-band)` (0-800→L1, 800-1600→L2, …), clamped `[--level-start,
+  --level-end]`; level N's opponent is treated as Elo `band·N`, and the bot's Elo
+  moves by a standard Elo update (K=`--elo-k` 24) on each round's score — so it
+  drifts to where it is ~even with the level it faces. `elo_history.png`
+  (Elo vs round + vs hours) written as it goes; `peak_elo.pt` saved.
   In the match the RL bot plays its **analysed best move** (`--best-moves`, default:
   shallow search + corner-safety via `evaluate_position` / `BestMoveBot`), not the
   policy argmax — games go ~−40 → ~−15 disc gap at level 1, and the fine-tune
