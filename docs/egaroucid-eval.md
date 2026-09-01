@@ -214,13 +214,14 @@ For a sustained self-improvement loop (hours, not one pass):
 python3 scripts/train_vs_egaroucid.py --hours 8
 ```
 
-Each round ("session") = one short match + one fine-tune, forever until the
-deadline. Egaroucid starts at `--level-start` (1) and **moves up one level only
-after a session the RL bot scores ≥ `--levelup-winrate`** (default 0.5, e.g. 4/8;
-draw = 0.5) — earned, never a step back down, capped at `--level-end`. (Use
-`--levelup-streak N` to require N such sessions in a row.) Given the bot's
-strength it will, realistically, stay at level 1 — which is the point: it only
-faces a harder opponent once it can actually hold its own.
+A **round** = one match (`--games`, default 8) + one fine-tune. A **session** =
+`--session-rounds` rounds (default 100). Within a session Egaroucid starts at
+`--level-start` (1) and **moves up one level after any round the RL bot scores ≥
+`--levelup-winrate`** (default 0.5, e.g. 4/8; draw = 0.5) — earned, never a step
+back down, capped at `--level-end` (`--levelup-streak N` requires N such rounds in
+a row). At each **session boundary the level resets to 1** — a repeated
+climb-from-level-1 ladder, so the model keeps practising the easy rungs while it
+pushes up.
 
 In the match the RL bot plays its **analysed best move** by default
 (`--best-moves` — a shallow look-ahead search + corner-safety folded onto the
