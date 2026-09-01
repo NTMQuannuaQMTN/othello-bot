@@ -54,6 +54,7 @@ torch.set_num_threads(1)
 from othello_rl.eval_external import (  # noqa: E402
     EgaroucidEngine, finetune_on_records, records_to_training_games, run_match,
 )
+from othello_rl.eval_external.match import BestMoveBot  # noqa: E402
 from othello_rl.evaluation.tournament import play_match  # noqa: E402
 from othello_rl.rl.checkpoint import Registry, resolve_checkpoint  # noqa: E402
 from othello_rl.utils.seed import seed_everything  # noqa: E402
@@ -99,6 +100,10 @@ def main(argv=None) -> int:
     ap.add_argument("--checkpoint", default=None,
                     help="base checkpoint (default: active model in checkpoints/registry.json)")
     ap.add_argument("--games", type=int, default=8, help="games per session (default 8)")
+    ap.add_argument("--best-moves", action=argparse.BooleanOptionalAction, default=True,
+                    help="in the match, play the bot's analysed best move (shallow "
+                         "search + corner-safety), not the bare policy argmax. Slower "
+                         "per round; the fine-tune then clones those stronger moves.")
     ap.add_argument("--level-start", type=int, default=1)
     ap.add_argument("--level-end", type=int, default=12, help="level cap (Egaroucid goes to 60)")
     ap.add_argument("--levelup-winrate", type=float, default=0.5,
@@ -205,7 +210,8 @@ def main(argv=None) -> int:
 
     print(f"train_vs_egaroucid — {_fmt(duration)} compute budget")
     print(f"  base model : {base_version}  [{base_label}]  ({n_params:,} params)")
-    print(f"  session    : {args.games} games, {args.opening_plies} opening plies")
+    print(f"  session    : {args.games} games, {args.opening_plies} opening plies, "
+          f"RL plays its {'analysed best move (search + corner-safety)' if args.best_moves else 'policy argmax'}")
     print(f"  level      : start {args.level_start}, cap {args.level_end}; move up after "
           f"{args.levelup_streak}x session win rate >= {args.levelup_winrate:.0%}"
           f"{f' (resuming at {prev_level})' if args.resume and prev_level > args.level_start else ''}")
@@ -250,6 +256,7 @@ def main(argv=None) -> int:
     best_wr = prev_best
     hours_saved = set()
     slept_s = 0.0
+    match_bot = BestMoveBot(bot) if args.best_moves else bot   # how RL picks moves in the match
 
     def _open_engine(level: int):
         nonlocal engine, cur_level
@@ -293,7 +300,8 @@ def main(argv=None) -> int:
 
             row = {"round": rnd, "t": round(elapsed, 1), "level": level}
             try:
-                summ = run_match(bot, engine, games=args.games, opening_plies=args.opening_plies,
+                summ = run_match(match_bot, engine, games=args.games,
+                                 opening_plies=args.opening_plies,
                                  seed=args.seed + rnd * 7919, verbose=False)
                 row["match"] = {"rl_w": summ.rl_wins, "eg_w": summ.egaroucid_wins,
                                 "draw": summ.draws, "disc_diff": round(summ.mean_disc_diff, 1),

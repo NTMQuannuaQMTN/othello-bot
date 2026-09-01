@@ -222,6 +222,13 @@ draw = 0.5) — earned, never a step back down, capped at `--level-end`. (Use
 strength it will, realistically, stay at level 1 — which is the point: it only
 faces a harder opponent once it can actually hold its own.
 
+In the match the RL bot plays its **analysed best move** by default
+(`--best-moves` — a shallow look-ahead search + corner-safety folded onto the
+Q-values, `OthelloBot.evaluate_position`), not the bare policy argmax. This makes
+the games competitive (disc gap ~−15 vs ~−40 for the raw policy at level 1) and
+the fine-tune then clones those stronger moves back into the policy. `--no-best-moves`
+for the fast raw-policy loop.
+
 **No per-match result files** — storage is just a handful of checkpoints + a
 compact `progress.jsonl`:
 

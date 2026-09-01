@@ -34,6 +34,40 @@ def _color_name(player: int) -> str:
     return "black" if player == BLACK else "white"
 
 
+class BestMoveBot:
+    """Wrap an ``OthelloBot`` so its move comes from the bot's **full position
+    analysis** — the shallow look-ahead search + corner-safety folded onto the
+    Q-values (``OthelloBot.evaluate_position``) — i.e. "the best move it can think
+    of", not the bare policy argmax (``select_action``).
+
+    Slower per move; meant for the *match* phase of training so games aren't all
+    one-sided (and so a fine-tune that clones the played moves distils the search
+    into the policy). ``.agent`` is forwarded for the illegal-move diagnostic.
+    """
+
+    def __init__(self, bot):
+        self._bot = bot
+        self.agent = getattr(bot, "agent", None)
+        self._tt: dict = {}
+
+    def reset(self) -> None:
+        self._tt.clear()
+
+    def select_action(self, board: Board) -> int:
+        if not board.legal_moves():
+            return PASS_ACTION
+        if len(self._tt) > 200_000:            # keep the transposition table bounded
+            self._tt.clear()
+        try:
+            ev = self._bot.evaluate_position(board, self._tt)
+            moves = ev.get("moves") or []
+            if moves:
+                return int(moves[0]["action"])
+        except Exception:  # pragma: no cover - fall back to the raw policy
+            pass
+        return int(self._bot.select_action(board))
+
+
 @dataclass
 class GameRecord:
     game_index: int
@@ -130,6 +164,8 @@ def play_game(bot, engine: EgaroucidEngine, *, rl_is_black: bool,
         opening_plies=opening_plies,
     )
     rng = opening_rng or random.Random(game_index)
+    if hasattr(bot, "reset"):
+        bot.reset()
 
     engine.clear_board()
     state = Board.initial()

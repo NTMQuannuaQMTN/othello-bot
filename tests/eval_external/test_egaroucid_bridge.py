@@ -289,6 +289,44 @@ def test_records_to_training_games_uses_real_moves_and_own_colour():
     assert len(records_to_training_games(recs)) == 1
 
 
+def test_best_move_bot_plays_legally_and_differs_from_policy():
+    from othello_rl.eval_external.match import BestMoveBot
+    from othello_rl.rl.checkpoint import Registry
+    from othello_rl.webapp.bot_service import OthelloBot
+
+    ob = OthelloBot.load(str(Registry.load().active_checkpoint_path()))
+    strong = BestMoveBot(ob)
+    assert strong.agent is ob.agent
+
+    state = Board.initial()
+    diffs = 0
+    for _ in range(40):
+        if state.is_terminal():
+            break
+        legal = state.legal_moves()
+        if not legal:
+            state = state.apply(None)
+            continue
+        a_strong = strong.select_action(state)
+        assert action_to_rc(a_strong) in legal
+        if a_strong != ob.select_action(state):
+            diffs += 1
+        state = state.apply(action_to_rc(a_strong))
+    # the analysed move should disagree with the raw argmax at least once
+    assert diffs >= 1
+
+
+def test_run_match_with_best_move_bot():
+    from othello_rl.eval_external.match import BestMoveBot
+    from othello_rl.rl.checkpoint import Registry
+    from othello_rl.webapp.bot_service import OthelloBot
+
+    ob = OthelloBot.load(str(Registry.load().active_checkpoint_path()))
+    summary = run_match(BestMoveBot(ob), FakeEngine(GreedyAgent()), games=2,
+                        opening_plies=2, seed=3, verbose=False)
+    assert summary.games == 2 and all(r.error is None for r in summary.records)
+
+
 def test_finetune_on_records_runs_and_respects_the_guardrail():
     from othello_rl.rl.checkpoint import Registry
     from othello_rl.webapp.bot_service import FineTuneConfig, OthelloBot

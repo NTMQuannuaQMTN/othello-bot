@@ -34,7 +34,11 @@ forward pass — no search). Results in `results/egaroucid/`.
 - **`scripts/train_vs_egaroucid.py --hours 8`:** unattended play→fine-tune loop
   until a deadline. Egaroucid starts at `--level-start` (1) and moves up a level
   only after a session the RL bot scores ≥ `--levelup-winrate` (0.5) — earned,
-  never down, capped at `--level-end`. (Realistically the bot stays at level 1.)
+  never down, capped at `--level-end`.
+  In the match the RL bot plays its **analysed best move** (`--best-moves`, default:
+  shallow search + corner-safety via `evaluate_position` / `BestMoveBot`), not the
+  policy argmax — games go ~−40 → ~−15 disc gap at level 1, and the fine-tune
+  clones those stronger moves.
   Storage-light — no match JSONs, just latest/best/hourly/final `.pt` +
   `progress.jsonl` + `run.json` under `checkpoints/experiments/egaroucid_train_<stamp>/`
   (git-ignored). `best.pt` by a periodic vs-Random+Greedy check; anchor buffer
