@@ -32,7 +32,9 @@ forward pass — no search). Results in `results/egaroucid/`.
   `scripts/promote_model.py`. Example: fine-tune #1 kept, win% vs Random
   0.933→0.900 (within guardrail). Learning from 10 losses doesn't dent Egaroucid.
 - **`scripts/train_vs_egaroucid.py --hours 8`:** unattended play→fine-tune loop
-  until a deadline; Egaroucid level ramps `--level-start`→`--level-end` (1→8).
+  until a deadline. Egaroucid starts at `--level-start` (1) and moves up a level
+  only after a session the RL bot scores ≥ `--levelup-winrate` (0.5) — earned,
+  never down, capped at `--level-end`. (Realistically the bot stays at level 1.)
   Storage-light — no match JSONs, just latest/best/hourly/final `.pt` +
   `progress.jsonl` + `run.json` under `checkpoints/experiments/egaroucid_train_<stamp>/`
   (git-ignored). `best.pt` by a periodic vs-Random+Greedy check; anchor buffer

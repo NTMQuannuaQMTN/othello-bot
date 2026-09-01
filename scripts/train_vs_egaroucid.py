@@ -9,7 +9,9 @@ the model on those games via the project's existing behaviour-cloning path
 **guardrail** that rolls back any update that weakens the bot vs Random).  The
 model is loaded once and fine-tuned in place across every round.
 
-Egaroucid's level **ramps up** over the run (``--level-start`` -> ``--level-end``).
+Egaroucid starts at ``--level-start`` and moves **up one level only after the RL
+bot scores >= --levelup-winrate in a session** (default 50%, e.g. 4/8) — earned
+progress, never a step back down. Capped at ``--level-end``.
 
 Storage is deliberately tiny — **no per-match result files**.  Only:
 
@@ -63,11 +65,9 @@ def _parse_duration(hours, minutes, seconds) -> float:
     return total if total > 0 else 8 * 3600.0
 
 
-def _ramp_level(elapsed: float, duration: float, lo: int, hi: int) -> int:
-    if hi == lo or duration <= 0:
-        return lo
-    frac = min(1.0, max(0.0, elapsed / duration))
-    return int(round(lo + (hi - lo) * frac))
+# Level progression is EARNED, not timed: start at --level-start and step up one
+# level (capped at --level-end) after any session the RL bot scores
+# >= --levelup-winrate (draw = 0.5). It never steps back down.
 
 
 def _fmt(sec: float) -> str:
@@ -98,9 +98,13 @@ def main(argv=None) -> int:
     ap.add_argument("--max-rounds", type=int, default=None, help="also stop after N rounds")
     ap.add_argument("--checkpoint", default=None,
                     help="base checkpoint (default: active model in checkpoints/registry.json)")
-    ap.add_argument("--games", type=int, default=10, help="games per match (default 10)")
+    ap.add_argument("--games", type=int, default=8, help="games per session (default 8)")
     ap.add_argument("--level-start", type=int, default=1)
-    ap.add_argument("--level-end", type=int, default=8)
+    ap.add_argument("--level-end", type=int, default=12, help="level cap (Egaroucid goes to 60)")
+    ap.add_argument("--levelup-winrate", type=float, default=0.5,
+                    help="RL session win rate (draw=0.5) needed to move up a level")
+    ap.add_argument("--levelup-streak", type=int, default=1,
+                    help="consecutive sessions at/above --levelup-winrate before moving up")
     ap.add_argument("--opening-plies", type=int, default=4)
     ap.add_argument("--threads", type=int, default=1)
     ap.add_argument("--egaroucid", default=None, help="path to Egaroucid_for_Console.out")
@@ -156,8 +160,10 @@ def main(argv=None) -> int:
     (out / "snapshots").mkdir(parents=True, exist_ok=True)
     base_version = Path(str(base_ckpt)).stem if args.checkpoint else reg.model_version
 
-    # -- continue round numbering / counters when resuming --------------
+    # -- continue round numbering / counters / level when resuming ------
     prev_rounds = prev_kept = prev_rolled = 0
+    prev_level = args.level_start
+    prev_streak = 0
     prog_path = out / "progress.jsonl"
     if args.resume and prog_path.is_file():
         for line in prog_path.read_text().splitlines():
@@ -168,12 +174,19 @@ def main(argv=None) -> int:
             except ValueError:
                 continue
             prev_rounds = max(prev_rounds, int(r.get("round", 0)))
+            prev_level = max(prev_level, int(r.get("level", args.level_start)))
             if isinstance(r.get("ft"), dict):
                 prev_kept += bool(r["ft"].get("kept"))
                 prev_rolled += (not r["ft"].get("kept"))
-        print(f"  resuming after round {prev_rounds} "
+        print(f"  resuming after round {prev_rounds} at level {prev_level} "
               f"({prev_kept} kept / {prev_rolled} rolled back so far)")
     prev_best = -1.0
+    if args.resume and (out / "run.json").is_file():
+        try:
+            _r = json.loads((out / "run.json").read_text())
+            prev_streak = int(_r.get("level_streak", 0))
+        except (ValueError, OSError):
+            pass
     if args.resume and (out / "best.json").is_file():
         try:
             prev_best = float(json.loads((out / "best.json").read_text()).get("score", -1.0))
@@ -190,10 +203,12 @@ def main(argv=None) -> int:
     bot = OthelloBot.load(str(base_ckpt), ft_config=ft, seed=args.seed)
     n_params = sum(p.numel() for p in bot.agent.net.parameters())
 
-    print(f"train_vs_egaroucid — {_fmt(duration)} from now")
+    print(f"train_vs_egaroucid — {_fmt(duration)} compute budget")
     print(f"  base model : {base_version}  [{base_label}]  ({n_params:,} params)")
-    print(f"  match      : {args.games} games/round, Egaroucid level "
-          f"{args.level_start} -> {args.level_end} (ramped), {args.opening_plies} opening plies")
+    print(f"  session    : {args.games} games, {args.opening_plies} opening plies")
+    print(f"  level      : start {args.level_start}, cap {args.level_end}; move up after "
+          f"{args.levelup_streak}x session win rate >= {args.levelup_winrate:.0%}"
+          f"{f' (resuming at {prev_level})' if args.resume and prev_level > args.level_start else ''}")
     print(f"  fine-tune  : {ft.grad_steps} grad steps, grade-lookahead {args.grade_lookahead}, "
           f"guardrail {ft.guardrail_games} games vs Random")
     print(f"  output     : {out}   (candidate — production untouched)")
@@ -225,6 +240,8 @@ def main(argv=None) -> int:
 
     engine = None
     cur_level = None
+    level = max(args.level_start, prev_level)     # earned progress survives resume
+    level_streak = prev_streak
     rnd = prev_rounds
     kept = prev_kept
     rolled = prev_rolled
@@ -269,10 +286,10 @@ def main(argv=None) -> int:
                 print(f"[{_fmt(now_mono - t0)}] (was asleep ~{_fmt(just_slept)} — "
                       f"compute clock paused; run under `caffeinate` to avoid this)")
             elapsed = now_mono - t0
-            level = _ramp_level(elapsed, duration, args.level_start, args.level_end)
             if level != cur_level:
                 _open_engine(level)
-                print(f"[{_fmt(elapsed)}] round {rnd}: Egaroucid level -> {level}")
+                print(f"[{_fmt(elapsed)}] round {rnd}: Egaroucid level -> {level}"
+                      f"{'  (EARNED)' if level > args.level_start else ''}")
 
             row = {"round": rnd, "t": round(elapsed, 1), "level": level}
             try:
@@ -280,7 +297,20 @@ def main(argv=None) -> int:
                                  seed=args.seed + rnd * 7919, verbose=False)
                 row["match"] = {"rl_w": summ.rl_wins, "eg_w": summ.egaroucid_wins,
                                 "draw": summ.draws, "disc_diff": round(summ.mean_disc_diff, 1),
-                                "rl_score": round(summ.rl_mean_score, 1)}
+                                "rl_score": round(summ.rl_mean_score, 1),
+                                "win_rate": round(summ.win_rate, 3)}
+                # earn the next level: a session scored >= --levelup-winrate
+                if summ.win_rate >= args.levelup_winrate:
+                    level_streak += 1
+                    if level_streak >= args.levelup_streak and level < args.level_end:
+                        level += 1
+                        row["level_up"] = level
+                        print(f"[{_fmt(elapsed)}] round {rnd}: RL scored "
+                              f"{summ.win_rate:.0%} ({summ.rl_wins}/{args.games}) "
+                              f"-> level up to {level}")
+                        level_streak = 0
+                else:
+                    level_streak = 0
             except Exception as exc:  # engine hiccup — restart and skip the round
                 errors += 1
                 row["error"] = f"match: {exc}"
@@ -353,15 +383,18 @@ def main(argv=None) -> int:
                 m = row.get("match", {})
                 chk = f" check R/G {row['check']['random']:.2f}/{row['check']['greedy']:.2f}" \
                     if "check" in row else ""
-                print(f"[{_fmt(elapsed)}] round {rnd:>4} L{level} | "
-                      f"match {m.get('rl_w','?')}-{m.get('eg_w','?')} diff {m.get('disc_diff','?'):>6} | "
+                print(f"[{_fmt(elapsed)}] round {rnd:>4} L{row['level']} | "
+                      f"match {m.get('rl_w','?')}-{m.get('eg_w','?')} "
+                      f"({m.get('win_rate', 0):.0%}) diff {m.get('disc_diff','?'):>6} | "
                       f"ft {'kept ' if was_kept else 'ROLL '}"
                       f"wr_rand {row['ft']['wr_rand'][0]:.2f}->{wr:.2f} ema {ema_wr:.3f}{chk}"
+                      f"{f'  ↑L{level}' if 'level_up' in row else ''}"
                       f"{'  <- BEST' if is_best else ''} | kept {kept}/{rnd} | ETA {eta}")
 
             run_meta.update(status="running", rounds=rnd, kept=kept, rolled_back=rolled,
                             errors=errors, best_score=round(best_wr, 3),
                             wr_rand_ema=round(ema_wr, 3), current_level=level,
+                            level_streak=level_streak, session_win_rate=round(summ.win_rate, 3),
                             compute_s=round(elapsed, 1), wall_s=round(time.time() - w0, 1),
                             slept_s=round(slept_s, 1))
             (out / "run.json").write_text(json.dumps(run_meta, indent=2) + "\n")

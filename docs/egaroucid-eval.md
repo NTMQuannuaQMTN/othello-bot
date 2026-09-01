@@ -214,10 +214,16 @@ For a sustained self-improvement loop (hours, not one pass):
 python3 scripts/train_vs_egaroucid.py --hours 8
 ```
 
-Each round = one short match + one fine-tune, forever until the deadline.
-Egaroucid's level **ramps** `--level-start` → `--level-end` (default 1 → 8) across
-the run. **No per-match result files** — storage is just a handful of
-checkpoints + a compact `progress.jsonl`:
+Each round ("session") = one short match + one fine-tune, forever until the
+deadline. Egaroucid starts at `--level-start` (1) and **moves up one level only
+after a session the RL bot scores ≥ `--levelup-winrate`** (default 0.5, e.g. 4/8;
+draw = 0.5) — earned, never a step back down, capped at `--level-end`. (Use
+`--levelup-streak N` to require N such sessions in a row.) Given the bot's
+strength it will, realistically, stay at level 1 — which is the point: it only
+faces a harder opponent once it can actually hold its own.
+
+**No per-match result files** — storage is just a handful of checkpoints + a
+compact `progress.jsonl`:
 
 ```
 checkpoints/experiments/egaroucid_train_<stamp>/     (git-ignored)
@@ -239,8 +245,9 @@ beat Random. Stop early with `Ctrl-C` or `touch <out>/STOP` — it still finalis
 `1` (default here) is ~5 s/round; the web-app default of `3` is ~4–10× slower.
 `--guardrail-games` and `--games` are the next levers. Knobs:
 `--games`, `--grad-steps`, `--grade-lookahead`, `--guardrail-games`,
-`--level-start/-end`, `--hours` (**budget of *active* compute** — see below),
-`--wall-hours` (hard cap), `--max-rounds`, `--threads` (Egaroucid).
+`--level-start/-end`, `--levelup-winrate`, `--levelup-streak`,
+`--hours` (**budget of *active* compute** — see below), `--wall-hours` (hard
+cap), `--max-rounds`, `--threads` (Egaroucid).
 
 **Sleep** — `--hours` counts *active* compute: `time.monotonic()` freezes while
 the Mac sleeps, so a laptop that sleeps overnight just does fewer rounds rather
