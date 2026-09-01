@@ -69,6 +69,15 @@ share, so the colour that's ahead fills the bar. In the Play tab the bar also
 tracks history navigation (`GET /api/eval` = live, `POST /api/eval
 {history_actions}` = that position).
 
+In the **analysis graph** the bar is **grade-smoothed** (`_smoothed_eval_graph`,
+`_EVAL_SWING_CAP`): a shallow search genuinely swings a lot on some plies (a
+corner changes hands, mobility flips) even when the move played was the best
+available — that swing is horizon noise, not information, since the pre-move eval
+already assumed best play. So the bar may move at most ~0.05 on a **Best** move,
+~0.13 on a **Good** one, and freely on a **Blunder**; it still chases the true
+value, just at most that much per ply, so a genuine multi-ply shift catches up
+over a few moves instead of jumping. Each graph point keeps `eval_black_raw`.
+
 Below the graph, a **strategy read-out** per side: move-quality counts +
 `accuracy` (fraction of Good-or-better moves), corners / X-squares / edge moves
 played, average mobility, disc count.

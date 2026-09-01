@@ -106,6 +106,50 @@ def test_analyse_line_navigation_payload(bot):
         assert ply["label"] in ("Best", "Excellent", "Good", "Inaccuracy", "Mistake", "Blunder")
 
 
+def test_eval_graph_is_grade_smoothed():
+    from othello_rl.webapp.bot_service import _EVAL_SWING_CAP, _smoothed_eval_graph, MoveAnalysis
+
+    def _pos(wb):
+        return {"eval": {"winprob_black": wb}}
+
+    # raw bar spikes +0.5 then returns; the spike ply was a "Best" move
+    raw = [0.50, 0.52, 0.99, 0.55, 0.54]
+    plies = [MoveAnalysis(ply=i, side="black", played=0, played_san="", played_value=0.0,
+                          played_winprob=0.0, best=0, best_san="", best_value=0.0,
+                          best_winprob=0.0, coach_best_san="", bot_drop=0.0, coach_drop=0.0,
+                          drop=0.0, label="Best", glyph="", eval_after_black=0.0)
+             for i in range(4)]
+    g = _smoothed_eval_graph([_pos(x) for x in raw], plies)
+    assert [round(p["eval_black_raw"], 2) for p in g] == raw
+    deltas = [abs(g[i]["eval_black"] - g[i - 1]["eval_black"]) for i in range(1, len(g))]
+    assert max(deltas) <= _EVAL_SWING_CAP["Best"] + 1e-9      # a Best move never jumps the bar
+
+    # same spike, but the spike ply is a Blunder -> it is allowed through
+    plies[1].label = "Blunder"
+    g2 = _smoothed_eval_graph([_pos(x) for x in raw], plies)
+    assert abs(g2[2]["eval_black"] - g2[1]["eval_black"]) > 0.3
+
+
+def test_analyse_line_best_moves_keep_the_bar_steady(bot):
+    # a line where the bot always plays its own top move -> the graph must be calm
+    from othello_rl.environment.board import action_to_rc
+    s = Board.initial()
+    acts = []
+    for _ in range(24):
+        if s.is_terminal() or not s.legal_moves():
+            break
+        a = bot.evaluate_position(s, {})["moves"][0]["action"]
+        acts.append(a)
+        s = s.apply(action_to_rc(a))
+    d = bot.analyse_line(acts)
+    g = [p["eval_black"] for p in d["eval_graph"]]
+    labels = {p["ply"]: p["label"] for p in d["plies"]}
+    for i in range(1, len(g)):
+        lbl = labels.get(i - 1)
+        if lbl in ("Best", "Excellent", "Good"):
+            assert abs(g[i] - g[i - 1]) <= 0.14
+
+
 def test_analyse_line_prefix_cache_matches_fresh(bot):
     from othello_rl.webapp.moves import parse_game
     acts = parse_game("f5d6c3d3c4f4f6f3")

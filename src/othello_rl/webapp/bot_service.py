@@ -650,8 +650,7 @@ class OthelloBot:
             summary: Dict[str, Dict[str, int]] = {"black": {}, "white": {}}
             for p in plies:
                 summary[p.side][p.label] = summary[p.side].get(p.label, 0) + 1
-            graph = [{"ply": i - 1, "eval_black": positions[i]["eval"]["winprob_black"]}
-                     for i in range(len(positions))]
+            graph = _smoothed_eval_graph(positions, plies)
 
             strat = copy.deepcopy(strat)      # finalise on a copy; the cache keeps the raw form
             final = positions[-1]
@@ -1001,6 +1000,37 @@ def _san(action: int) -> str:
     if action == PASS_ACTION:
         return "pass"
     return square_name(action_to_rc(action))
+
+
+#: How far the eval bar may move in one ply, by the quality of the move played.
+#: A shallow heuristic search genuinely swings a lot on some plies (a corner
+#: changes hands, mobility flips) even when the move was the best available — that
+#: swing is horizon noise, not information, because the pre-move eval already
+#: assumed best play. So a good move is capped hard and only a real mistake is
+#: allowed to move the bar freely. The bar still chases the true value, just at
+#: most this much per ply, so a genuine multi-ply shift catches up over a few
+#: moves instead of jumping.
+_EVAL_SWING_CAP: Dict[str, float] = {
+    "Best": 0.05, "Excellent": 0.08, "Good": 0.13,
+    "Inaccuracy": 0.22, "Mistake": 0.45, "Blunder": 1.0,
+}
+
+
+def _smoothed_eval_graph(positions: List[dict], plies: List["MoveAnalysis"]) -> List[dict]:
+    """Eval-graph points (Black win prob) with a per-ply cap on how far the bar
+    may move, scaled by the played move's grade (:data:`_EVAL_SWING_CAP`).
+    ``positions[i]`` is the state after ``i`` plies (incl. passes); ``positions[i]``
+    corresponds to action ``i-1``.  A pass (no entry in ``plies``) is uncapped."""
+    raw = [float(p["eval"]["winprob_black"]) for p in positions]
+    label_by_action = {int(p.ply): p.label for p in plies}
+    out = [{"ply": -1, "eval_black": raw[0], "eval_black_raw": raw[0]}] if raw else []
+    smooth = raw[0] if raw else 0.5
+    for i in range(1, len(raw)):
+        cap = _EVAL_SWING_CAP.get(label_by_action.get(i - 1), 1.0)
+        delta = raw[i] - smooth
+        smooth = float(np.clip(smooth + max(-cap, min(cap, delta)), 0.02, 0.98))
+        out.append({"ply": i - 1, "eval_black": smooth, "eval_black_raw": raw[i]})
+    return out
 
 
 def _eval_scale(board: Board) -> float:
