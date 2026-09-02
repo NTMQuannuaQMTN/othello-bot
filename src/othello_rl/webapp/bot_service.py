@@ -82,11 +82,15 @@ _EP_LOOKAHEAD = 2
 
 #: default per-move search-engine time budget (seconds) for a fresh ``OthelloBot``
 #: (move selection, the Play-tab bar). Tests patch this to 0 (engine off / fast).
-_DEFAULT_ENGINE_BUDGET = 0.6
-#: much smaller budget for the whole-game analysis graph (many positions, and the
-#: prefix cache keeps re-analysis to just the new tip). The dedicated
-#: ``POST /api/best_move`` endpoint is where a real think happens.
-_ANALYSE_BUDGET = 0.12
+#: 1.0s + an exact solve from 16 empties (see ``engine_endgame``) is enough to
+#: play the endgame perfectly — that is where the policy net used to throw won
+#: games with a single move.
+_DEFAULT_ENGINE_BUDGET = 1.0
+#: smaller budget for the whole-game analysis graph (many positions, and the
+#: prefix cache keeps re-analysis to just the new tip). Still large enough to
+#: finish the exact endgame solve. The dedicated ``POST /api/best_move`` endpoint
+#: is where the deepest think happens.
+_ANALYSE_BUDGET = 0.3
 
 #: Corners dominate Othello and the small DQN is nearly blind to them, so corner
 #: safety is assessed directly and folded into a move's expected points — an
@@ -195,7 +199,7 @@ class OthelloBot:
         #: ``None`` -> :data:`_DEFAULT_ENGINE_BUDGET`; ``<= 0`` turns the engine
         #: off (raw policy — fast tests). ``engine_endgame`` = empties to solve exactly.
         self.engine_budget: Optional[float] = None
-        self.engine_endgame = 12
+        self.engine_endgame = 16
         # version / lineage survive a restart: they ride in the checkpoint meta,
         # written by `_save_version` and read back here.
         self.version = int(self.agent.meta.extra.get("version", 0))
