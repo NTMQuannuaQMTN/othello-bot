@@ -35,6 +35,16 @@ A generate→train→eval loop for `--hours`; output
 / `progress.jsonl` / `run.json`. 2-min smoke: raw policy vs Heuristic 0.29 → 0.52.
 Production/registry untouched — candidate only. `tests/engine/test_train_from_engine.py`.
 
+### `scripts/elo_tournament.py` — calibrate the Egaroucid ladder
+
+Round-robin: our engine + random/greedy/heuristic/minimax:1-3 + Egaroucid 0-10
+(incl. adjacent Egaroucid-level games), one fitted Elo scale (anchor greedy=1500).
+Writes `results/tournament/egaroucid_anchors.json` = the **measured** Elo of each
+Egaroucid level. `train_vs_egaroucid.py --elo-anchors <file>` uses those real
+numbers for the ladder (level = strongest the bot's Elo clears; opponent Elo =
+that level's measured rating) — fixing the earlier mis-calibration (the low
+levels are ~120 Elo apart, not 1000). `tests/engine/test_elo_tournament.py`.
+
 ## Current phase
 Phases 1–11 complete and validated. Full spec audit done (see AUDIT below):
 5 latent issues fixed with regressions; 2 spec-gap features added

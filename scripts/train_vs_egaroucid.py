@@ -10,13 +10,18 @@ the model on those games via the project's existing behaviour-cloning path
 model is loaded once and fine-tuned in place across every round.
 
 **Elo ladder.** The RL bot has an Elo, starting at ``--elo-start`` (500).
-Egaroucid has a **level 0**; the level the bot faces is
-``floor(Elo / --elo-band)`` (Elo 0-1000 -> level 0, 1000-2000 -> level 1, ...),
-clamped to ``[--level-start, --level-end]``. Level N's opponent is treated as Elo
-``band * (N+1)``; after each round the bot's Elo moves by the standard Elo update
-(K = ``--elo-k``) on that round's score, so it drifts to wherever it is ~even with
-the level it currently faces, up and down. An ``elo_history.png`` graph (Elo vs
-round and vs hours, level bands shaded) is written as it goes.
+The Egaroucid level it faces follows that Elo; after each round the Elo moves by
+the standard update (K = ``--elo-k``) on the round's score, drifting to where the
+bot is ~even with its level.
+
+* ``--elo-anchors egaroucid_anchors.json`` (from ``scripts/elo_tournament.py``):
+  use the **measured** Elo of each Egaroucid level — level = the strongest one the
+  bot's Elo is at or above; it faces that level's real rating.  This is the
+  calibrated ladder.
+* otherwise: ``level = floor(Elo / --elo-band)`` and level N is *assumed* to be
+  Elo ``band * (N+1)`` (a rough guess — the levels are actually much closer).
+
+An ``elo_history.png`` graph is written as it goes.
 
 **Move review.** After each round every RL move is graded ``--grade-lookahead``
 plies deep: a move that left the bot worse off than the best available is
@@ -80,15 +85,31 @@ def _parse_duration(hours, minutes, seconds) -> float:
     return total if total > 0 else 8 * 3600.0
 
 
-def _level_for_elo(elo: float, band: float, lo: int, hi: int) -> int:
-    """Egaroucid level for an Elo: ``floor(elo / band)``, clamped to [lo, hi].
-    band = 1000 -> Elo 0-1000 = level 0, 1000-2000 = level 1, ..."""
+def _load_anchors(path):
+    """``egaroucid_anchors.json`` from ``scripts/elo_tournament.py`` ->
+    ``{level: measured Elo}`` (ints), or ``None``."""
+    if not path:
+        return None
+    d = json.loads(Path(path).read_text())
+    return {int(k): float(v) for k, v in d["egaroucid_elo"].items()}
+
+
+def _level_for_elo(elo: float, band: float, lo: int, hi: int, anchors=None) -> int:
+    """Egaroucid level for a bot Elo.  With measured ``anchors`` -> the strongest
+    level whose Elo the bot is at or above (clamped).  Otherwise ``floor(elo/band)``."""
+    if anchors:
+        cand = [L for L in sorted(anchors) if anchors[L] <= elo and lo <= L <= hi]
+        return cand[-1] if cand else max(lo, min(hi, min(anchors)))
     return max(lo, min(hi, int(max(0.0, elo) // band)))
 
 
-def _opp_elo(level: int, band: float) -> float:
-    """The Elo the RL bot's rating is scored against at ``level`` — the top of
-    that level's band, so a bot at the band boundary is ~even and ready to move up."""
+def _opp_elo(level: int, band: float, anchors=None) -> float:
+    """Elo the RL bot is scored against at ``level`` — the level's **measured**
+    Elo (``anchors``), else the top of its band."""
+    if anchors and level in anchors:
+        return anchors[level]
+    if anchors:                                   # clamp to nearest known level
+        return anchors[min(anchors, key=lambda L: abs(L - level))]
     return band * (level + 1)
 
 
@@ -190,7 +211,11 @@ def main(argv=None) -> int:
     # --- Elo ladder: the RL bot has an Elo; the Egaroucid level it faces is set
     #     by that Elo, and its Elo moves up/down on each round's result -------------
     ap.add_argument("--elo-start", type=float, default=500.0,
-                    help="the RL bot's starting Elo")
+                    help="the RL bot's starting Elo (default: lowest anchor if --elo-anchors)")
+    ap.add_argument("--elo-anchors", default=None,
+                    help="egaroucid_anchors.json from scripts/elo_tournament.py — use the "
+                         "MEASURED Elo of each Egaroucid level as the ladder (instead of "
+                         "assuming a fixed --elo-band per level)")
     ap.add_argument("--elo-band", type=float, default=1000.0,
                     help="Elo per level: level = floor(elo / band); level N's opponent "
                          "Elo = band * (N+1). So Elo 0-1000 -> level 0, 1000-2000 -> level 1, ...")
@@ -231,6 +256,10 @@ def main(argv=None) -> int:
     duration = _parse_duration(args.hours, args.minutes, args.seconds)
     seed_everything(args.seed)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    anchors = _load_anchors(args.elo_anchors)
+    if anchors and args.elo_start == 500.0:          # default -> weakest anchor
+        args.elo_start = min(anchors.values())
 
     def _abs(p):
         p = Path(p)
@@ -341,7 +370,7 @@ def main(argv=None) -> int:
     cur_level = None
     elo = prev_elo
     peak_elo = prev_peak_elo
-    level = _level_for_elo(elo, args.elo_band, args.level_start, args.level_end)
+    level = _level_for_elo(elo, args.elo_band, args.level_start, args.level_end, anchors)
     rnd = prev_rounds
     kept = prev_kept
     rolled = prev_rolled
@@ -379,7 +408,7 @@ def main(argv=None) -> int:
                 print(f"wall-clock cap ({_fmt(wall_cap)}) reached — stopping.")
                 break
             rnd += 1
-            level = _level_for_elo(elo, args.elo_band, args.level_start, args.level_end)
+            level = _level_for_elo(elo, args.elo_band, args.level_start, args.level_end, anchors)
             now_mono = time.monotonic()
             # a big wall gap with almost no monotonic movement == the Mac slept
             gap = (time.time() - w0) - (now_mono - t0)
@@ -393,7 +422,7 @@ def main(argv=None) -> int:
                 _open_engine(level)
                 print(f"[{_fmt(elapsed)}] round {rnd}: Elo {elo:.0f} -> Egaroucid level {level}")
 
-            opp_elo = _opp_elo(level, args.elo_band)
+            opp_elo = _opp_elo(level, args.elo_band, anchors)
             row = {"round": rnd, "t": round(elapsed, 1), "level": level,
                    "elo_before": round(elo, 1), "opp_elo": opp_elo}
             try:

@@ -281,3 +281,9 @@ labeller, **not an oracle**.
       outcome, generate→train→eval loop for `--hours`. Candidate under
       `checkpoints/experiments/engine_bc_<stamp>/`; production untouched.
       `tests/engine/test_train_from_engine.py` (2).
+- [x] `scripts/elo_tournament.py` — round-robin (engine + random/greedy/heuristic/
+      minimax:1-3 + Egaroucid 0-10, incl. adjacent Egaroucid-level games), fit one
+      Elo scale, write `results/tournament/egaroucid_anchors.json` (measured Elo
+      per level). `train_vs_egaroucid.py --elo-anchors <file>` then uses the
+      **measured** level Elos as the ladder (level = strongest the bot's Elo
+      clears) instead of the `band*(N+1)` guess. `tests/engine/test_elo_tournament.py`.
