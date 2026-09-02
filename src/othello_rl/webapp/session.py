@@ -74,7 +74,10 @@ class GameSession:
                 self._apply(PASS_ACTION)
                 self.last_bot_moves.append(PASS_ACTION)
                 continue
-            a = self.bot.select_action(self.board)
+            try:                                    # a real search engine — the bot plays to win
+                a = int(self.bot.best_move(self.board)["action"])
+            except Exception:                       # pragma: no cover - defensive
+                a = self.bot.select_action(self.board)
             self._apply(a)
             self.last_bot_moves.append(a)
 

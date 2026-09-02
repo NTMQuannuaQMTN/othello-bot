@@ -257,3 +257,21 @@ labeller, **not an oracle**.
       (guardrail keep/rollback ⇔ weights move/restore).
       Baseline: v001_curriculum_selfplay 0/10 vs Egaroucid level 10
       (avg −60 discs); RL inference ~0.5 ms/move.
+
+## Phase 14 — search engine for the web app
+
+- [x] `othello_rl/engine/bitboard.py` — bitboard move-gen / flips / conversion,
+      property-tested equal to the numpy `environment` engine (legal moves,
+      resulting positions, final score) over random games.
+- [x] `othello_rl/engine/solver.py` — negamax + alpha-beta, TT, static+TT move
+      ordering, iterative deepening under a time budget, **exact endgame solve**
+      from `endgame_empties` (leaf = final disc margin). `best_move()` -> `(sq,
+      value, meta{depth,exact,nodes,pv})`.
+- [x] `OthelloBot.best_move()` + `engine_budget` / `engine_endgame`; wired into
+      `session.bot_move`, `evaluate_position` (#1 move + winprob), `bar_eval`;
+      `_ANALYSE_BUDGET` (0.12s) for the analysis graph; `POST /api/best_move`.
+      `_DEFAULT_ENGINE_BUDGET` patched to 0 by `tests/webapp/conftest.py`.
+- [x] `tests/engine/` (6): bitboard == numpy engine; exact endgame == brute-force
+      negamax; iterative deepening; `best_move` payload; evaluate_position top ==
+      engine; engine beats `MinimaxAgent(2)` >=5/6. Beats the old shallow
+      suggestion 17-0-3. Model / training / RL env unchanged.

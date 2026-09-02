@@ -30,6 +30,14 @@ from .bot_service import OthelloBot
 from .moves import parse_game
 from .session import GameSession
 
+
+def _board_from(actions) -> Board:
+    """Replay a flat action list (64 = pass) from the start position."""
+    b = Board.initial()
+    for a in (int(x) for x in actions):
+        b = b.apply(None if (a == 64 or not b.legal_moves()) else divmod(a, 8))
+    return b
+
 #: Vite build output (``cd web && npm run build``). Overridable via AppState.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_STATIC_DIR = _REPO_ROOT / "web" / "dist"
@@ -153,12 +161,18 @@ def make_handler(app: AppState):
         prefix (so the bar tracks history navigation). Lightweight — one search,
         not one per legal move; use ``POST /api/analyse`` for the full picture."""
         acts = (body or {}).get("history_actions")
-        if acts is None:
-            return app.bot.bar_eval(app.session.board)
-        b = Board.initial()
-        for a in (int(x) for x in acts):
-            b = b.apply(None if (a == 64 or not b.legal_moves()) else divmod(a, 8))
+        b = app.session.board if acts is None else _board_from(acts)
         return app.bot.bar_eval(b)
+
+    @route("POST /api/best_move")
+    def _best_move(body):
+        """The strongest move the engine can find for a position (alpha-beta +
+        exact endgame). ``{history_actions: [...], time_budget?: 3.0}`` ->
+        ``{action, san, winprob, winprob_stm, exact, depth, nodes, pv}``."""
+        b = _board_from(body.get("history_actions") or
+                        list(app.session.state()["history_actions"]))
+        return app.bot.best_move(b, time_budget=float(body.get("time_budget", 3.0)),
+                                 endgame_empties=int(body.get("endgame_empties", 16)))
 
     @route("POST /api/new")
     def _new(body):

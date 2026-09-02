@@ -1,6 +1,27 @@
 # Progress
 
-_Last updated: 2026-08-31_
+_Last updated: 2026-09-02_
+
+## Phase 14 — a real search engine for the web app (2026-09-02)
+
+`othello_rl/engine/` — a **bitboard** Othello engine (move-gen / flips /
+conversion, property-tested against the numpy `environment` engine) + a
+**negamax + alpha-beta** solver: transposition table, static+TT move ordering,
+iterative deepening under a time budget, and an **exact endgame solve** once
+`engine_endgame` (12) squares remain (leaf = true final disc margin → the last
+dozen moves are perfect).
+
+- `OthelloBot.best_move(board, time_budget=…, endgame_empties=…)` — the move the
+  web app suggests and the Play-tab bot plays. DQN is only a tiebreak nudge.
+  `engine_budget <= 0` (or `_DEFAULT_ENGINE_BUDGET` patched to 0) = engine off,
+  raw policy — used by the fast webapp tests (`tests/webapp/conftest.py`).
+- `session.bot_move`, `evaluate_position` (top move + `winprob`), `bar_eval` all
+  route through it. `analyse_line`'s per-ply graph uses a light 0.12s budget;
+  new `POST /api/best_move {history_actions, time_budget?}` for a real think.
+- Strength: beats `MinimaxAgent(2)` ~every game; beats the old shallow suggestion
+  **17-0-3** (+35 disc). Exact endgame verified optimal vs brute-force negamax.
+- `tests/engine/` (6). Model, training, RL env untouched — this is the *play*
+  path only.
 
 ## Current phase
 Phases 1–11 complete and validated. Full spec audit done (see AUDIT below):

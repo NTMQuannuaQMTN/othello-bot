@@ -80,6 +80,14 @@ _COACH_SCALE = 18.0  # heuristic-value units -> tanh -> [0, 1)
 _LOOKAHEAD_PLIES = 3
 _EP_LOOKAHEAD = 2
 
+#: default per-move search-engine time budget (seconds) for a fresh ``OthelloBot``
+#: (move selection, the Play-tab bar). Tests patch this to 0 (engine off / fast).
+_DEFAULT_ENGINE_BUDGET = 0.6
+#: much smaller budget for the whole-game analysis graph (many positions, and the
+#: prefix cache keeps re-analysis to just the new tip). The dedicated
+#: ``POST /api/best_move`` endpoint is where a real think happens.
+_ANALYSE_BUDGET = 0.12
+
 #: Corners dominate Othello and the small DQN is nearly blind to them, so corner
 #: safety is assessed directly and folded into a move's expected points — an
 #: X-square move genuinely shows fewer expected points, so it grades badly *and*
@@ -183,6 +191,11 @@ class OthelloBot:
         self.ft = ft_config or FineTuneConfig()
         self._lock = threading.RLock()
         self._rng = random.Random(seed)
+        #: search-engine settings for move selection / eval. ``engine_budget``
+        #: ``None`` -> :data:`_DEFAULT_ENGINE_BUDGET`; ``<= 0`` turns the engine
+        #: off (raw policy — fast tests). ``engine_endgame`` = empties to solve exactly.
+        self.engine_budget: Optional[float] = None
+        self.engine_endgame = 12
         # version / lineage survive a restart: they ride in the checkpoint meta,
         # written by `_save_version` and read back here.
         self.version = int(self.agent.meta.extra.get("version", 0))
@@ -234,6 +247,65 @@ class OthelloBot:
     def select_move(self, board: Board):
         a = self.select_action(board)
         return None if a == PASS_ACTION else action_to_rc(a)
+
+    # -- strong play: a real search engine (alpha-beta + exact endgame) ---
+    def best_move(self, board: Board, *, time_budget: Optional[float] = None,
+                  endgame_empties: Optional[int] = None) -> dict:
+        """The strongest move the bot can find — an alpha-beta search
+        (`othello_rl.engine.solver`) that plays the last ``endgame_empties``
+        squares out **exactly**.  This is what the web app suggests and what the
+        Play-tab bot plays; the DQN policy is only a tiebreak nudge.
+
+        Returns ``{action, san, winprob (Black's), winprob_stm, score, exact,
+        depth, nodes, pv}``.  For a forced pass, ``action`` is ``PASS_ACTION``.
+        """
+        from othello_rl.engine import bitboard as _bb
+        from othello_rl.engine.solver import best_move as _search
+
+        budget = time_budget
+        if budget is None:
+            budget = _DEFAULT_ENGINE_BUDGET if self.engine_budget is None else self.engine_budget
+        eg = self.engine_endgame if endgame_empties is None else endgame_empties
+
+        with self._lock:
+            if board.is_terminal():
+                w = board.winner()
+                wb = 1.0 if w == BLACK else (0.0 if w == WHITE else 0.5)
+                return {"action": PASS_ACTION, "san": "pass", "winprob": wb,
+                        "winprob_stm": None, "score": 0.0, "exact": True,
+                        "depth": 0, "nodes": 0, "pv": []}
+            if not board.legal_moves():
+                return {"action": PASS_ACTION, "san": "pass",
+                        "winprob": _eval_black(self, board, {}),
+                        "winprob_stm": None, "score": 0.0, "exact": False,
+                        "depth": 0, "nodes": 0, "pv": []}
+            if budget <= 0:                       # engine off -> raw policy (fast tests)
+                a = int(self.agent.greedy_act(encode_observation(board),
+                                              legal_action_mask(board)))
+                rc = action_to_rc(a)
+                stm_wp = _winprob(float(self._q_values(board)[0][a]))
+                wb = stm_wp if board.player == BLACK else 1.0 - stm_wp
+                return {"action": a, "san": square_name(rc), "winprob": float(wb),
+                        "winprob_stm": float(stm_wp), "score": 0.0, "exact": False,
+                        "depth": 0, "nodes": 0, "pv": []}
+            P, O = _bb.from_grid(board.array, board.player)
+            sq, val, meta = _search(P, O, time_budget=budget, endgame_empties=eg)
+            rc = action_to_rc(int(sq))
+            if meta["exact"]:                                  # margin in discs
+                margin = val - (2 ** 20 if val > 0 else -2 ** 20 if val < 0 else 0)
+                margin = margin / 1000.0
+                stm_wp = 0.5 if abs(margin) < 1e-6 else (0.98 if margin > 0 else 0.02)
+            else:
+                stm_wp = float(np.clip(0.5 + 0.5 * np.tanh(val / 900.0), 0.02, 0.98))
+            wb = stm_wp if board.player == BLACK else 1.0 - stm_wp
+            return {
+                "action": int(sq), "san": square_name(rc),
+                "winprob": float(wb), "winprob_stm": float(stm_wp),
+                "score": float(val if not meta["exact"] else margin),
+                "exact": bool(meta["exact"]), "depth": int(meta["depth"]),
+                "nodes": int(meta["nodes"]),
+                "pv": [square_name(action_to_rc(s)) for s in meta["pv"]],
+            }
 
     # -- position / move evaluation ------------------------------------
     def _q_values(self, board: Board) -> Tuple[np.ndarray, np.ndarray]:
@@ -434,10 +506,10 @@ class OthelloBot:
             "label": label, "glyph": glyph,
         }
 
-    def bar_eval(self, board: Board) -> dict:
-        """Just the eval bar: Black's look-ahead win probability + the score.
-        Much cheaper than :meth:`evaluate_position` (one search, not one per
-        legal move) — used by the Play tab's bar, which needs nothing else."""
+    def bar_eval(self, board: Board, search_budget: Optional[float] = None) -> dict:
+        """Just the eval bar: Black's win probability (from the search engine) +
+        the score.  Lighter than :meth:`evaluate_position` (no per-move payload) —
+        used by the Play tab's bar."""
         with self._lock:
             b, w = board.scores()
             if board.is_terminal():
@@ -446,13 +518,17 @@ class OthelloBot:
                         "winner": _side(wn) if wn else "draw",
                         "winprob_black": 1.0 if wn == BLACK else 0.0 if wn == WHITE else 0.5,
                         "winprob_stm": None, "score": {"black": b, "white": w}, "moves": []}
-            eb = _eval_black(self, board, {})
+            eng = self.best_move(board, time_budget=search_budget)
+            eb = float(eng["winprob"])
             return {"terminal": False, "winner": None,
                     "winprob_black": eb,
                     "winprob_stm": eb if board.player == BLACK else 1.0 - eb,
-                    "score": {"black": b, "white": w}, "moves": []}
+                    "score": {"black": b, "white": w}, "moves": [],
+                    "engine": {"depth": eng["depth"], "exact": eng["exact"],
+                               "best_san": eng["san"], "pv": eng["pv"]}}
 
-    def evaluate_position(self, board: Board, tt: Optional[dict] = None) -> dict:
+    def evaluate_position(self, board: Board, tt: Optional[dict] = None,
+                          search_budget: Optional[float] = None) -> dict:
         """Bot's read of a position: expected points (win prob) for the side to
         move and for Black, plus the legal moves ranked by expected points. All
         from a shallow look-ahead — the eval bar shows who leads a few moves on."""
@@ -470,8 +546,21 @@ class OthelloBot:
             ep = self._expected_points(board, q, conts, tt) if conts else \
                 {int(a): _winprob(float(q[a])) for a in legal}
             ranked = sorted(ep, key=ep.get, reverse=True)
-            wp_stm = float(ep[ranked[0]])
-            wp_black = _eval_black(self, board, tt)  # look-ahead, for bar + graph
+
+            # the real engine picks the best move; the shallow `ep` still scores
+            # every move for the "bot likes" list + per-move analysis.
+            eng = self.best_move(board, time_budget=search_budget) if conts else None
+            if eng and eng["action"] in ep:
+                best_a = int(eng["action"])
+                ranked = [best_a] + [a for a in ranked if a != best_a]
+                wp_stm = float(eng["winprob_stm"])
+                wp_black = float(eng["winprob"])
+            else:
+                best_a = ranked[0]
+                wp_stm = float(ep[best_a])
+                wp_black = _eval_black(self, board, tt)
+
+            ep_best = ep.get(best_a, ep[ranked[0]])
             moves = []
             for a in ranked:
                 risk = self._corner_risk(board, int(a))
@@ -481,13 +570,17 @@ class OthelloBot:
                     "value": float(q[a]),
                     "winprob": float(ep[a]),          # expected points after this move
                     "score": float(ep[a]),
-                    "ep_lost": float(max(0.0, ep[ranked[0]] - ep[a])),
+                    "ep_lost": float(max(0.0, ep_best - ep[a])),
                     "corner_risk": float(risk),
                     "gives_corner": risk >= _RISK_X_SQUARE,
                     "takes_corner": risk < 0.0,
                 })
-            return {"terminal": False, "winprob_black": wp_black,
-                    "winprob_stm": wp_stm, "moves": moves}
+            out = {"terminal": False, "winprob_black": wp_black,
+                   "winprob_stm": wp_stm, "moves": moves}
+            if eng:
+                out["engine"] = {"depth": eng["depth"], "exact": eng["exact"],
+                                 "nodes": eng["nodes"], "pv": eng["pv"]}
+            return out
 
     def analyse_game(self, actions: Sequence[int], top_k: int = 3) -> List[MoveAnalysis]:
         """Move-by-move analysis of a game given as a list of action indices from
@@ -529,7 +622,8 @@ class OthelloBot:
                 state = nxt
             return out
 
-    def _position_payload(self, state: Board, tt: Optional[dict] = None) -> dict:
+    def _position_payload(self, state: Board, tt: Optional[dict] = None,
+                          search_budget: Optional[float] = None) -> dict:
         b, w = state.scores()
         moves = state.legal_moves()
         if moves:
@@ -546,7 +640,7 @@ class OthelloBot:
                        if state.is_terminal() else None),
             "legal_actions": legal,
             "score": {"black": b, "white": w},
-            "eval": self.evaluate_position(state, tt),
+            "eval": self.evaluate_position(state, tt, search_budget=search_budget),
         }
 
     def analyse_line(self, actions: Sequence[int], top_k: int = 3) -> dict:
@@ -588,7 +682,7 @@ class OthelloBot:
                                             else action_to_rc(a))
                 else:
                     state = Board.initial()
-                    positions = [self._position_payload(state, tt)]
+                    positions = [self._position_payload(state, tt, search_budget=_ANALYSE_BUDGET)]
                     plies = []
                     strat = {"black": {"corners": 0, "x_squares": 0, "edges": 0,
                                        "mobility": [], "moves": 0},
@@ -603,7 +697,7 @@ class OthelloBot:
                     break
                 if a == PASS_ACTION or not state.legal_moves():
                     state = state.apply(None)
-                    positions.append(self._position_payload(state, tt))
+                    positions.append(self._position_payload(state, tt, search_budget=_ANALYSE_BUDGET))
                     continue
                 g = self.grade_move(state, a, tt)
                 q = g["q"]
@@ -623,7 +717,7 @@ class OthelloBot:
                     sd["edges"] += 1
 
                 nxt = state.apply(a)
-                pos = self._position_payload(nxt, tt)
+                pos = self._position_payload(nxt, tt, search_budget=_ANALYSE_BUDGET)
                 positions.append(pos)
                 ep = g["ep"]
                 plies.append(MoveAnalysis(

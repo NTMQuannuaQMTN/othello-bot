@@ -59,13 +59,28 @@ An **interactive analysis board** — you don't type moves, you play them:
   move list (`f5 d6 c3 …`) or run-together transcript (`f5d6c3…`);
 - a `?analyse=<transcript>` URL opens straight into that line.
 
-The **eval bar** and **eval graph** are a win-probability for **Black** from a
-shallow **negamax + alpha-beta look-ahead** (`analysis/search.py`, heuristic leaf:
-disc diff, mobility, corners, edges, corner danger) — so they show *who will be
-ahead a few moves from now*, not just the current position. The DQN value is left
-out (side-to-move-relative, only a per-ply zig-zag). Sharpened as the board fills
-so a decided endgame reads as ~0 / 1. The bar fills from the bottom with Black's
-share, so the colour that's ahead fills the bar. In the Play tab the bar also
+## The search engine
+
+Move selection and the eval both run a **real Othello engine**
+(`othello_rl/engine/`): a bitboard board, negamax + alpha-beta with a
+transposition table and iterative deepening under a time budget, and an **exact
+endgame solve** once ~12 squares remain (leaf = the true final disc margin, so
+the last dozen moves are played perfectly). The DQN policy is only a tiebreak.
+It beats a 2-ply minimax ~every game and the shallow heuristic suggestion
+17-0-3.
+
+- **Play tab**: the bot plays `OthelloBot.best_move` (`self.engine_budget`, ~0.6s;
+  `engine_budget <= 0` turns it off — the raw policy).
+- **`POST /api/best_move`** `{history_actions, time_budget?}` → the strongest move
+  for a position (default 3s, solves from 16 empties). This is the one to hit for
+  "what should I actually play here."
+- **Analysis board**: the top "bot likes" move is the engine's pick; the per-ply
+  graph uses a light 0.12s budget (the prefix cache keeps re-analysis to the new
+  tip only).
+
+The **eval bar** and **eval graph** are a win-probability for **Black** from that
+engine — exact once the game is close to solved, otherwise a squashed search
+score. The bar fills from the bottom with Black's share. In the Play tab the bar
 tracks history navigation (`GET /api/eval` = live, `POST /api/eval
 {history_actions}` = that position).
 
