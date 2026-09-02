@@ -23,6 +23,18 @@ dozen moves are perfect).
 - `tests/engine/` (6). Model, training, RL env untouched — this is the *play*
   path only.
 
+### `scripts/train_from_engine.py` — distil the engine into the policy
+
+Now that the engine is a strong teacher, behaviour-clone it: generate engine
+self-play games (35% random-move exploration for position variety; the engine's
+pick is the label at *every* position), then train the DQN's Q-head so
+``argmax Q`` matches the engine's move + a value head toward the game outcome.
+A generate→train→eval loop for `--hours`; output
+`checkpoints/experiments/engine_bc_<stamp>/` (git-ignored): `latest.pt` /
+`best.pt` (raw-policy win% vs Random+Greedy+Heuristic) / `games.jsonl` (resumable)
+/ `progress.jsonl` / `run.json`. 2-min smoke: raw policy vs Heuristic 0.29 → 0.52.
+Production/registry untouched — candidate only. `tests/engine/test_train_from_engine.py`.
+
 ## Current phase
 Phases 1–11 complete and validated. Full spec audit done (see AUDIT below):
 5 latent issues fixed with regressions; 2 spec-gap features added

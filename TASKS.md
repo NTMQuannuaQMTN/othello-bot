@@ -275,3 +275,9 @@ labeller, **not an oracle**.
       negamax; iterative deepening; `best_move` payload; evaluate_position top ==
       engine; engine beats `MinimaxAgent(2)` >=5/6. Beats the old shallow
       suggestion 17-0-3. Model / training / RL env unchanged.
+- [x] `scripts/train_from_engine.py` — behaviour-clone the engine into the DQN:
+      generate engine self-play (explore for variety, engine move = label at
+      every ply), train Q-head CE toward the engine move + value head toward the
+      outcome, generate→train→eval loop for `--hours`. Candidate under
+      `checkpoints/experiments/engine_bc_<stamp>/`; production untouched.
+      `tests/engine/test_train_from_engine.py` (2).
