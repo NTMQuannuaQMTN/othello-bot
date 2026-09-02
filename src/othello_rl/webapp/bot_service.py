@@ -80,6 +80,11 @@ _COACH_SCALE = 18.0  # heuristic-value units -> tanh -> [0, 1)
 _LOOKAHEAD_PLIES = 3
 _EP_LOOKAHEAD = 2
 
+#: budget for the search-engine calls that decide a move's grade (the "best move"
+#: and the played move's value).  Exact endgame from ``engine_endgame`` empties
+#: applies regardless, so endgame grading is always exact.
+_GRADE_BUDGET = 0.35
+
 #: default per-move search-engine time budget (seconds) for a fresh ``OthelloBot``
 #: (move selection, the Play-tab bar). Tests patch this to 0 (engine off / fast).
 #: 1.0s + an exact solve from 16 empties (see ``engine_endgame``) is enough to
@@ -455,21 +460,56 @@ class OthelloBot:
         ep = self._expected_points(board, q, conts, tt)
         return sorted(ep, key=ep.get, reverse=True)
 
+    def _mover_wp_after(self, board: Board, move: int) -> Optional[float]:
+        """Win prob for ``board``'s mover *after* they play ``move``, from the
+        search engine (exact in the endgame).  ``None`` if the move is illegal."""
+        mover = board.player
+        legal = {r * 8 + c for r, c in board.legal_moves()}
+        if int(move) not in legal:
+            return None
+        child = board.apply(action_to_rc(int(move)))
+        if child.is_terminal():
+            w = child.winner()
+            return 1.0 if w == mover else 0.0 if w else 0.5
+        ce = self.best_move(child, time_budget=_GRADE_BUDGET)
+        stm = float(ce["winprob_stm"])
+        # if the opponent was forced to pass, `child`'s mover is still `mover`
+        return stm if child.player == mover else 1.0 - stm
+
     def grade_move(self, board: Board, played: int, tt: Optional[dict] = None,
                    lookahead: int = _EP_LOOKAHEAD) -> dict:
         """Grade one move by **expected points lost** vs the best move
         (chess.com's model): 0 lost -> Best, then Excellent / Good / Inaccuracy /
-        Mistake / Blunder per ``_CLASS_TABLE``. Expected points come from a
-        ``lookahead``-ply search, so a Mistake/Blunder is a move whose few-move
-        outcome is worse than the best move's; play the best move -> EP lost 0 ->
-        "Best"."""
+        Mistake / Blunder per ``_CLASS_TABLE``.
+
+        The best move and both win-probabilities come from the **search engine**
+        (:meth:`best_move`, exact endgame) for the side to move — the same source
+        as the board's suggested move — so "best" always means best *for whoever
+        is on move*, and the move list never disagrees with the board.  The
+        shallow ``_expected_points`` is kept only for the secondary "bot likes"
+        ordering."""
         q, mask = self._q_values(board)
         legal = np.nonzero(mask)[0]
         played = int(played)
         conts = self._coach_conts(board)
         ep = self._expected_points(board, q, conts, tt, lookahead) if conts else {}
 
-        if ep:
+        resolved = (self.engine_budget if self.engine_budget is not None
+                    else _DEFAULT_ENGINE_BUDGET)
+        engine_on = _GRADE_BUDGET > 0 and resolved > 0
+        eng = self.best_move(board, time_budget=_GRADE_BUDGET) if (conts and engine_on) else None
+        if eng and 0 <= int(eng["action"]) < 64:
+            best = int(eng["action"])
+            best_ep = float(eng["winprob_stm"])
+            if played == best:
+                played_ep = best_ep
+            else:
+                pw = self._mover_wp_after(board, played)
+                played_ep = best_ep if pw is None else pw
+            ep_lost = max(0.0, best_ep - played_ep)
+            shallow_rank = sorted(ep, key=ep.get, reverse=True) if ep else []
+            ranked = [best] + [a for a in shallow_rank if a != best]
+        elif ep:  # engine unavailable (budget 0) — fall back to the shallow score
             ranked = sorted(ep, key=ep.get, reverse=True)
             best = ranked[0]
             best_ep = ep[best]
@@ -568,12 +608,19 @@ class OthelloBot:
             moves = []
             for a in ranked:
                 risk = self._corner_risk(board, int(a))
+                # the engine's pick (always ranked[0] when the engine ran) reports
+                # the engine's win prob for the side to move, so the board's
+                # "best -> X% win" matches the move list's grade; the shallow
+                # score of any other move is capped there so the list stays
+                # ordered best-first.
+                wp = wp_stm if (eng and int(a) == best_a) else (
+                    min(float(ep[a]), wp_stm) if eng else float(ep[a]))
                 moves.append({
                     "action": int(a),
                     "san": _san(a),
                     "value": float(q[a]),
-                    "winprob": float(ep[a]),          # expected points after this move
-                    "score": float(ep[a]),
+                    "winprob": float(wp),             # expected points after this move
+                    "score": float(wp),
                     "ep_lost": float(max(0.0, ep_best - ep[a])),
                     "corner_risk": float(risk),
                     "gives_corner": risk >= _RISK_X_SQUARE,
