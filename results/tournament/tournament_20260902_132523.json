@@ -1,0 +1,474 @@
+{
+  "stamp": "20260902_132523",
+  "checkpoint": "/Users/qnrj/Code/othello-bot/checkpoints/production/best.pt",
+  "config": {
+    "checkpoint": null,
+    "engine_budget": 0.3,
+    "engine_endgame": 12,
+    "games": 5,
+    "agent_games": 16,
+    "opening_plies": 2,
+    "minimax_depths": "1,2,3",
+    "eg_levels": "0-10",
+    "eg_opponents": "engine,greedy,heuristic,minimax:2,minimax:3",
+    "eg_threads": 4,
+    "eg_vs_eg": 6,
+    "egaroucid": null,
+    "anchor": "greedy",
+    "seed": 0,
+    "out": "results/tournament"
+  },
+  "seconds": 880.4,
+  "ratings": {
+    "egaroucid:6": 3045.0,
+    "egaroucid:10": 3038.0,
+    "egaroucid:8": 3004.0,
+    "egaroucid:9": 2986.3,
+    "egaroucid:4": 2960.8,
+    "egaroucid:5": 2952.4,
+    "egaroucid:7": 2904.7,
+    "egaroucid:3": 2684.6,
+    "egaroucid:2": 2489.4,
+    "engine": 2209.8,
+    "egaroucid:1": 2154.9,
+    "egaroucid:0": 2131.5,
+    "minimax:3": 2114.9,
+    "minimax:2": 1788.3,
+    "heuristic": 1715.5,
+    "minimax:1": 1683.2,
+    "greedy": 1500.0,
+    "random": 1255.4
+  },
+  "crosstable": {
+    "engine vs random": {
+      "w": 5,
+      "d": 0,
+      "l": 0
+    },
+    "engine vs greedy": {
+      "w": 5,
+      "d": 0,
+      "l": 0
+    },
+    "engine vs heuristic": {
+      "w": 5,
+      "d": 0,
+      "l": 0
+    },
+    "engine vs minimax:1": {
+      "w": 5,
+      "d": 0,
+      "l": 0
+    },
+    "engine vs minimax:2": {
+      "w": 5,
+      "d": 0,
+      "l": 0
+    },
+    "engine vs minimax:3": {
+      "w": 5,
+      "d": 0,
+      "l": 0
+    },
+    "random vs greedy": {
+      "w": 5,
+      "d": 0,
+      "l": 11
+    },
+    "random vs heuristic": {
+      "w": 0,
+      "d": 0,
+      "l": 16
+    },
+    "random vs minimax:1": {
+      "w": 0,
+      "d": 1,
+      "l": 15
+    },
+    "random vs minimax:2": {
+      "w": 1,
+      "d": 0,
+      "l": 15
+    },
+    "random vs minimax:3": {
+      "w": 0,
+      "d": 0,
+      "l": 16
+    },
+    "greedy vs heuristic": {
+      "w": 4,
+      "d": 0,
+      "l": 12
+    },
+    "greedy vs minimax:1": {
+      "w": 4,
+      "d": 0,
+      "l": 12
+    },
+    "greedy vs minimax:2": {
+      "w": 2,
+      "d": 0,
+      "l": 14
+    },
+    "greedy vs minimax:3": {
+      "w": 0,
+      "d": 0,
+      "l": 16
+    },
+    "heuristic vs minimax:1": {
+      "w": 9,
+      "d": 0,
+      "l": 7
+    },
+    "heuristic vs minimax:2": {
+      "w": 7,
+      "d": 0,
+      "l": 9
+    },
+    "heuristic vs minimax:3": {
+      "w": 1,
+      "d": 0,
+      "l": 15
+    },
+    "minimax:1 vs minimax:2": {
+      "w": 6,
+      "d": 0,
+      "l": 10
+    },
+    "minimax:1 vs minimax:3": {
+      "w": 1,
+      "d": 0,
+      "l": 15
+    },
+    "minimax:2 vs minimax:3": {
+      "w": 2,
+      "d": 0,
+      "l": 14
+    },
+    "engine vs egaroucid:0": {
+      "w": 2,
+      "d": 0,
+      "l": 3
+    },
+    "greedy vs egaroucid:0": {
+      "w": 1,
+      "d": 0,
+      "l": 4
+    },
+    "heuristic vs egaroucid:0": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:2 vs egaroucid:0": {
+      "w": 1,
+      "d": 0,
+      "l": 4
+    },
+    "minimax:3 vs egaroucid:0": {
+      "w": 2,
+      "d": 0,
+      "l": 3
+    },
+    "engine vs egaroucid:1": {
+      "w": 2,
+      "d": 1,
+      "l": 2
+    },
+    "greedy vs egaroucid:1": {
+      "w": 1,
+      "d": 0,
+      "l": 4
+    },
+    "heuristic vs egaroucid:1": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:2 vs egaroucid:1": {
+      "w": 1,
+      "d": 0,
+      "l": 4
+    },
+    "minimax:3 vs egaroucid:1": {
+      "w": 2,
+      "d": 0,
+      "l": 3
+    },
+    "engine vs egaroucid:2": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "greedy vs egaroucid:2": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "heuristic vs egaroucid:2": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:2 vs egaroucid:2": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:3 vs egaroucid:2": {
+      "w": 3,
+      "d": 0,
+      "l": 2
+    },
+    "engine vs egaroucid:3": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "greedy vs egaroucid:3": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "heuristic vs egaroucid:3": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:2 vs egaroucid:3": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:3 vs egaroucid:3": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "engine vs egaroucid:4": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "greedy vs egaroucid:4": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "heuristic vs egaroucid:4": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:2 vs egaroucid:4": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:3 vs egaroucid:4": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "engine vs egaroucid:5": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "greedy vs egaroucid:5": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "heuristic vs egaroucid:5": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:2 vs egaroucid:5": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:3 vs egaroucid:5": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "engine vs egaroucid:6": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "greedy vs egaroucid:6": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "heuristic vs egaroucid:6": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:2 vs egaroucid:6": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:3 vs egaroucid:6": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "engine vs egaroucid:7": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "greedy vs egaroucid:7": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "heuristic vs egaroucid:7": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:2 vs egaroucid:7": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:3 vs egaroucid:7": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "engine vs egaroucid:8": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "greedy vs egaroucid:8": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "heuristic vs egaroucid:8": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:2 vs egaroucid:8": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:3 vs egaroucid:8": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "engine vs egaroucid:9": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "greedy vs egaroucid:9": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "heuristic vs egaroucid:9": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:2 vs egaroucid:9": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:3 vs egaroucid:9": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "engine vs egaroucid:10": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "greedy vs egaroucid:10": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "heuristic vs egaroucid:10": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:2 vs egaroucid:10": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "minimax:3 vs egaroucid:10": {
+      "w": 0,
+      "d": 0,
+      "l": 5
+    },
+    "egaroucid:0 vs egaroucid:1": {
+      "w": 2,
+      "d": 0,
+      "l": 4
+    },
+    "egaroucid:1 vs egaroucid:2": {
+      "w": 0,
+      "d": 0,
+      "l": 6
+    },
+    "egaroucid:2 vs egaroucid:3": {
+      "w": 2,
+      "d": 0,
+      "l": 4
+    },
+    "egaroucid:3 vs egaroucid:4": {
+      "w": 1,
+      "d": 0,
+      "l": 5
+    },
+    "egaroucid:4 vs egaroucid:5": {
+      "w": 3,
+      "d": 0,
+      "l": 3
+    },
+    "egaroucid:5 vs egaroucid:6": {
+      "w": 2,
+      "d": 0,
+      "l": 4
+    },
+    "egaroucid:6 vs egaroucid:7": {
+      "w": 4,
+      "d": 0,
+      "l": 2
+    },
+    "egaroucid:7 vs egaroucid:8": {
+      "w": 2,
+      "d": 0,
+      "l": 4
+    },
+    "egaroucid:8 vs egaroucid:9": {
+      "w": 3,
+      "d": 0,
+      "l": 3
+    },
+    "egaroucid:9 vs egaroucid:10": {
+      "w": 1,
+      "d": 3,
+      "l": 2
+    }
+  }
+}

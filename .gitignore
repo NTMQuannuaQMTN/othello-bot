@@ -64,3 +64,6 @@ checkpoints/*
 !checkpoints/experiments/
 checkpoints/experiments/*
 !checkpoints/experiments/.gitkeep
+
+# tournament run logs (keep the JSON, drop the console log)
+results/**/*.log
