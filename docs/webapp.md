@@ -69,14 +69,18 @@ the last dozen moves are played perfectly). The DQN policy is only a tiebreak.
 It beats a 2-ply minimax ~every game and the shallow heuristic suggestion
 17-0-3.
 
-- **Play tab**: the bot plays `OthelloBot.best_move` (`self.engine_budget`, ~0.6s;
-  `engine_budget <= 0` turns it off — the raw policy).
+- **Play tab**: the bot plays `OthelloBot.best_move` (`self.engine_budget`, ~1.0s
+  + exact from 16 empties; `engine_budget <= 0` turns it off — the raw policy).
 - **`POST /api/best_move`** `{history_actions, time_budget?}` → the strongest move
   for a position (default 3s, solves from 16 empties). This is the one to hit for
   "what should I actually play here."
-- **Analysis board**: the top "bot likes" move is the engine's pick; the per-ply
-  graph uses a light 0.12s budget (the prefix cache keeps re-analysis to the new
-  tip only).
+- **Analysis board**: every position — the suggested move, the eval graph **and**
+  each move's grade — comes from the same engine, searched to a **fixed depth**
+  (`_ANALYSE_DEPTH`, + exact from `_ANALYSE_ENDGAME` empties) so it's the best
+  move *for whoever is on move* and every position is judged against the same
+  horizon (a best move can't then show a spurious eval drop). Results are cached
+  (`_bm_memo`) across the prefix-cached re-analysis, so building a line costs
+  about one search per move.
 
 The **eval bar** and **eval graph** are a win-probability for **Black** from that
 engine — exact once the game is close to solved, otherwise a squashed search
