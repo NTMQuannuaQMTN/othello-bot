@@ -1,6 +1,6 @@
 # Keep the Vercel deploy small and torch-free.
-# The Python function needs: api/, src/othello_rl/ (via vercel.json includeFiles).
-# The web build needs: web/ (minus its node_modules).
+# The build (`npm run vercel-build`) copies src/othello_rl -> api/othello_rl and
+# builds web/. The Python function bundles everything in api/.
 
 # root requirements.txt pins torch (~1 GB) — the function uses api/requirements.txt
 /requirements.txt

@@ -21,11 +21,12 @@ the buttons are hidden and the endpoints return 400.
 
 | path | role |
 |---|---|
-| `api/[...path].py` | Vercel catch-all Python function — loads the bot once, delegates to `othello_rl.webapp.server.dispatch` |
+| `api/index.py` | the Python function — loads the bot once, delegates to `othello_rl.webapp.server.dispatch` |
 | `api/policy.npz` | exported weights (committed; ~1.5 MB) |
 | `api/requirements.txt` | `numpy` only |
-| `vercel.json` | build command, function config, SPA fallback rewrite |
-| `.vercelignore` | keeps torch / checkpoints / data out of the bundle |
+| `package.json` `vercel-build` | copies `src/othello_rl` → `api/othello_rl` (vendored into the function), then builds `web/` |
+| `vercel.json` | build command, function limits, `/api/*` + SPA rewrites |
+| `.vercelignore` | keeps torch / checkpoints / data out of the upload |
 
 ## One-time: export the model
 

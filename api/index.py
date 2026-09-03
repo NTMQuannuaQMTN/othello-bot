@@ -14,10 +14,18 @@ from pathlib import Path
 from urllib.parse import parse_qs
 
 _HERE = Path(__file__).resolve().parent
-for _p in (_HERE.parent / "src", _HERE.parent, _HERE):
-    sp = str(_p)
-    if sp not in sys.path:
-        sys.path.insert(0, sp)
+# Vercel may run this file from /var/task (api/ prefix stripped) while
+# includeFiles puts the package at /var/task/src — so search a few roots for it.
+_roots = []
+for _base in (_HERE, _HERE.parent, _HERE.parent.parent):
+    _roots += [_base / "src", _base]
+for _p in _roots:
+    if (_p / "othello_rl").is_dir():
+        sys.path.insert(0, str(_p))
+        break
+else:  # last resort: add them all and hope
+    for _p in _roots:
+        sys.path.insert(0, str(_p))
 
 # Load the bot once per container. If anything here fails, keep the failure so
 # every request can report it as JSON instead of an opaque 500.
@@ -75,10 +83,19 @@ class handler(BaseHTTPRequestHandler):
     def _run(self, method: str):
         path = _api_path(self.path, self.headers)
         if _boot_error is not None:
+            def _ls(p):
+                try:
+                    return sorted(x.name for x in Path(p).iterdir())[:40]
+                except Exception as e:  # noqa: BLE001
+                    return f"<{e}>"
             return self._send(500, {"error": "bot failed to load",
                                     "detail": _boot_error,
                                     "python": sys.version,
-                                    "sys_path": sys.path[:6]})
+                                    "sys_path": sys.path[:8],
+                                    "here": str(_HERE),
+                                    "ls_here": _ls(_HERE),
+                                    "ls_here_src": _ls(_HERE / "src"),
+                                    "ls_parent": _ls(_HERE.parent)})
         body = {}
         if method == "POST":
             n = int(self.headers.get("content-length", 0) or 0)

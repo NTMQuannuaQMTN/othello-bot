@@ -1,9 +1,10 @@
 {
   "name": "othello-bot",
   "private": true,
-  "description": "Root shim so Vercel builds the web/ front end and picks up the api/ Python function. See docs/deploy.md.",
+  "description": "Root shim so Vercel builds the web/ front end and vendors the Python package next to the api/ function. See docs/deploy.md.",
   "scripts": {
-    "build": "npm --prefix web install --no-audit --no-fund && npm --prefix web run build",
-    "vercel-build": "npm run build"
+    "vendor-api": "rm -rf api/othello_rl && cp -r src/othello_rl api/othello_rl",
+    "build:web": "npm --prefix web install --no-audit --no-fund && npm --prefix web run build",
+    "vercel-build": "npm run vendor-api && npm run build:web"
   }
 }
