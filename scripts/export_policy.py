@@ -5,8 +5,8 @@ The Vercel deployment serves moves/grades with :class:`NumpyPolicy` (numpy only,
 no PyTorch — see ``src/othello_rl/rl/numpy_policy.py``).  Run this once, with the
 full install, to produce the weights it loads:
 
-    python3 scripts/export_policy.py                      # -> api/policy.npz
-    python3 scripts/export_policy.py --checkpoint <path> --out api
+    python3 scripts/export_policy.py                      # -> web/api/policy.npz
+    python3 scripts/export_policy.py --checkpoint <path>
 
 The output is small (~1.6 MB) and committed so the serverless function has it.
 """
@@ -35,7 +35,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--checkpoint", default=None, help="default: active production checkpoint")
-    ap.add_argument("--out", default="api", help="directory to write policy.npz into")
+    ap.add_argument("--out", default="web/api", help="directory to write policy.npz into")
     args = ap.parse_args(argv)
 
     ckpt = (Path(args.checkpoint) if args.checkpoint and Path(args.checkpoint).exists()

@@ -39,7 +39,7 @@ def main(argv=None) -> int:
     ap.add_argument("--fresh", action="store_true",
                     help="ignore any fine-tuned state and start from the base checkpoint")
     ap.add_argument("--policy", default=None,
-                    help="serve the torch-free exported policy (api/policy.npz) — "
+                    help="serve the torch-free exported policy (web/api/policy.npz) — "
                          "inference only, mirrors the Vercel deploy")
     args = ap.parse_args(argv)
     seed_everything(0)

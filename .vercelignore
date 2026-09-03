@@ -1,8 +1,8 @@
-# Keep the Vercel deploy small and torch-free.
-# The build (`npm run vercel-build`) copies src/othello_rl -> api/othello_rl and
-# builds web/. The Python function bundles everything in api/.
-
-# root requirements.txt pins torch (~1 GB) — the function uses api/requirements.txt
+# Keep the Vercel deploy small and torch-free. Vercel's Root Directory is `web`,
+# but the whole repo is still cloned here (this file runs at the repo root), so
+# web/vercel-build can `cp ../src/othello_rl web/api/othello_rl`. Do NOT ignore
+# /src. The torch checkpoints / training code / pyproject (which the uv Python
+# builder would read and install torch from) are dropped.
 /requirements.txt
 /requirements-dev.txt
 /pyproject.toml
