@@ -4,6 +4,9 @@ import AnalysisPanel from "./components/AnalysisPanel.jsx";
 import BotBadge from "./components/BotBadge.jsx";
 import { api } from "./api.js";
 
+const apiBase = () => (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "") || location.origin;
+const isLocal = () => ["localhost", "127.0.0.1"].includes(location.hostname);
+
 export default function App() {
   const [tab, setTab] = useState(
     location.hash === "#analysis" || new URLSearchParams(location.search).has("analyse")
@@ -19,12 +22,15 @@ export default function App() {
     setTab("analysis");
   }, []);
 
+  const [apiErr, setApiErr] = useState(null);
   const refreshBot = useCallback(async () => {
     try {
       setBot(await api("/bot"));
       setApiDown(false);
-    } catch {
+      setApiErr(null);
+    } catch (e) {
       setApiDown(true);
+      setApiErr(e?.message || String(e));
     }
   }, []);
 
@@ -54,8 +60,12 @@ export default function App() {
 
       {apiDown && (
         <div className="api-down">
-          Can't reach the bot API. If you're running it yourself, start it with{" "}
-          <code>python3 scripts/serve.py</code>.
+          Can't reach the bot API at <code>{apiBase()}/api/bot</code>.
+          {isLocal()
+            ? <> Start it in another terminal: <code>python3 scripts/serve.py</code>.</>
+            : <> The server may be starting up or misconfigured
+                — try again in a moment.</>}
+          {apiErr && <div className="alt" style={{ marginTop: 6 }}>{apiErr}</div>}
         </div>
       )}
 
