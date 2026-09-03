@@ -10,8 +10,10 @@ from othello_rl.webapp.bot_service import OthelloBot, classify_drop
 
 @pytest.fixture(scope="module")
 def bot():
-    agent = DQNAgent(NetworkConfig(channels=8, blocks=2, hidden=16), seed=0)
-    return OthelloBot(agent)
+    import torch
+    torch.manual_seed(0)          # net weights use the global RNG — pin it so the
+    agent = DQNAgent(NetworkConfig(channels=8, blocks=2, hidden=16), seed=0)  # grading
+    return OthelloBot(agent)      # assertions below don't depend on test order
 
 
 def _random_game(seed=0, max_plies=200):

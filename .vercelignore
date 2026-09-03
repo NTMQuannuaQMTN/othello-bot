@@ -1,8 +1,7 @@
-# Keep the Vercel deploy small and torch-free. Vercel's Root Directory is `web`,
-# but the whole repo is still cloned here (this file runs at the repo root), so
-# web/vercel-build can `cp ../src/othello_rl web/api/othello_rl`. Do NOT ignore
-# /src. The torch checkpoints / training code / pyproject (which the uv Python
-# builder would read and install torch from) are dropped.
+# Keep the Vercel deploy small and torch-free. Root Directory = repo root; the
+# build runs `npm run vercel-build` (builds web/ -> web/dist) and bundles
+# api/ as the Python function. The torch checkpoints / training code / pyproject
+# (which the uv Python builder would read and install torch from) are dropped.
 /requirements.txt
 /requirements-dev.txt
 /pyproject.toml

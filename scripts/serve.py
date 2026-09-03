@@ -13,7 +13,7 @@ The React front end is in ``web/``:
     python3 scripts/serve.py                                  # -> http://127.0.0.1:8000
 
     # mirror the (torch-free) Vercel deploy:
-    python3 scripts/serve.py --policy web/api/policy.npz
+    python3 scripts/serve.py --policy api/policy.npz
 """
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ def main(argv=None) -> int:
     ap.add_argument("--config", default="configs/webapp.yaml")
     ap.add_argument("--checkpoint", default=None, help="override the bot checkpoint (.pt)")
     ap.add_argument("--policy", default=None,
-                    help="serve the torch-free exported policy (web/api/policy.npz) instead")
+                    help="serve the torch-free exported policy (api/policy.npz) instead")
     ap.add_argument("--port", type=int, default=None)
     ap.add_argument("--host", default=None)
     args = ap.parse_args(argv)

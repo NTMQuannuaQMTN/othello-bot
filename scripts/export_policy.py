@@ -5,10 +5,10 @@ The Vercel deployment serves moves/grades with :class:`NumpyPolicy` (numpy only,
 no PyTorch — see ``src/othello_rl/rl/numpy_policy.py``).  Run this once, with the
 full install, to produce the weights it loads:
 
-    python3 scripts/export_policy.py                      # -> web/api/policy.npz
+    python3 scripts/export_policy.py                      # -> api/policy.npz
     python3 scripts/export_policy.py --checkpoint <path>
 
-Also re-vendors ``src/othello_rl`` -> ``web/api/othello_rl`` so ``web/api/`` is a
+Also re-vendors ``src/othello_rl`` -> ``api/othello_rl`` so ``api/`` is a
 self-contained function bundle.  Both are committed (~2 MB total).
 """
 from __future__ import annotations
@@ -36,7 +36,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--checkpoint", default=None, help="default: active production checkpoint")
-    ap.add_argument("--out", default="web/api", help="directory to write policy.npz into")
+    ap.add_argument("--out", default="api", help="directory to write policy.npz into")
     args = ap.parse_args(argv)
 
     ckpt = (Path(args.checkpoint) if args.checkpoint and Path(args.checkpoint).exists()
@@ -88,14 +88,14 @@ def main(argv=None) -> int:
     print(f"wrote {npz}  ({size_kb:.0f} KB, {npol.param_count:,} params)")
     print(f"numpy vs torch: max |ΔQ| = {max_err:.2e}, argmax matches on all sampled positions")
 
-    # re-vendor the package so web/api/ is a self-contained function bundle
+    # re-vendor the package so api/ is a self-contained function bundle
     import shutil
-    vendor = _ROOT / "web" / "api" / "othello_rl"
+    vendor = out_dir / "othello_rl"
     shutil.rmtree(vendor, ignore_errors=True)
     shutil.copytree(_ROOT / "src" / "othello_rl", vendor,
                     ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     print(f"vendored {vendor}  ({sum(f.stat().st_size for f in vendor.rglob('*') if f.is_file()) // 1024} KB)")
-    print("commit web/api/policy.npz + web/api/othello_rl/ for the Vercel deploy.")
+    print("commit api/policy.npz + api/othello_rl/ for the Vercel deploy.")
     return 0
 
 

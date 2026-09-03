@@ -1,0 +1,8 @@
+{
+  "name": "othello-bot",
+  "private": true,
+  "description": "Root project for the Vercel deploy: builds web/ and serves api/index.py. Root Directory must be the repo root. See docs/deploy.md.",
+  "scripts": {
+    "vercel-build": "npm --prefix web install --no-audit --no-fund && npm --prefix web run build"
+  }
+}
