@@ -8,7 +8,8 @@ full install, to produce the weights it loads:
     python3 scripts/export_policy.py                      # -> web/api/policy.npz
     python3 scripts/export_policy.py --checkpoint <path>
 
-The output is small (~1.6 MB) and committed so the serverless function has it.
+Also re-vendors ``src/othello_rl`` -> ``web/api/othello_rl`` so ``web/api/`` is a
+self-contained function bundle.  Both are committed (~2 MB total).
 """
 from __future__ import annotations
 
@@ -86,6 +87,15 @@ def main(argv=None) -> int:
     size_kb = npz.stat().st_size / 1024
     print(f"wrote {npz}  ({size_kb:.0f} KB, {npol.param_count:,} params)")
     print(f"numpy vs torch: max |ΔQ| = {max_err:.2e}, argmax matches on all sampled positions")
+
+    # re-vendor the package so web/api/ is a self-contained function bundle
+    import shutil
+    vendor = _ROOT / "web" / "api" / "othello_rl"
+    shutil.rmtree(vendor, ignore_errors=True)
+    shutil.copytree(_ROOT / "src" / "othello_rl", vendor,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    print(f"vendored {vendor}  ({sum(f.stat().st_size for f in vendor.rglob('*') if f.is_file()) // 1024} KB)")
+    print("commit web/api/policy.npz + web/api/othello_rl/ for the Vercel deploy.")
     return 0
 
 

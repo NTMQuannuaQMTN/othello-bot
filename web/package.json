@@ -9,7 +9,7 @@
     "dev:all": "concurrently -k -n api,web -c blue,green \"npm run api\" \"vite\"",
     "api": "python3 ../scripts/serve.py --config ../configs/webapp.yaml",
     "build": "vite build",
-    "vercel-build": "rm -rf api/othello_rl && cp -r ../src/othello_rl api/othello_rl && vite build",
+    "vercel-build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {

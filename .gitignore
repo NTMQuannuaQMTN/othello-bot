@@ -68,5 +68,3 @@ checkpoints/experiments/*
 # tournament run logs (keep the JSON, drop the console log)
 results/**/*.log
 
-# vendored into the Vercel function by "npm run vendor-api" (build step)
-/web/api/othello_rl/
