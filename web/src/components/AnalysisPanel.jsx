@@ -140,14 +140,14 @@ export default function AnalysisPanel({ loadLine, onBotChanged }) {
         status={status}
         footer={!pos.terminal && engineMoves.length > 0 && (
           <div className="board-legend">
-            <span><i className="lg-best" /> best {engineMoves[0].san}{" "}
-              &rarr; {pct(engineMoves[0].winprob)} win</span>
-            {ply && ply.played === engineMoves[0].action && (
-              <span><b className="label Best">✓</b> you played the best move</span>
+            <span><i className="lg-best" /> best for {sideLabel(pos.turn)}:{" "}
+              {engineMoves[0].san} &rarr; {pct(engineMoves[0].winprob)} win</span>
+            {ply && ply.played === ply.best && (
+              <span><b className="label Best">✓</b> {sideLabel(ply.side)} played the best move</span>
             )}
-            {ply && ply.played !== engineMoves[0].action && (
-              <span><i className="lg-last" /> you played {ply.played_san}{" "}
-                {pct(ply.played_winprob)} win
+            {ply && ply.played !== ply.best && (
+              <span><i className="lg-last" /> {sideLabel(ply.side)} played {ply.played_san}{" "}
+                — best was {ply.best_san}
                 <b className={"label " + ply.label}>
                   {" "}{ply.label}{ply.drop > 0.001 ? ` −${Math.round(ply.drop * 100)}` : ""}</b>
               </span>
@@ -253,7 +253,7 @@ export default function AnalysisPanel({ loadLine, onBotChanged }) {
             // win% for the mover after the move played, and the best alternative
             const w = pct(p.played_winprob);
             let note;
-            if (p.best_san === p.played_san) note = `${w} win · ✓ best`;
+            if (p.best === p.played) note = `${w} win · ✓ best`;
             else note = `${w} win · best ${p.best_san} ${pct(p.best_winprob)}` +
               (p.drop > 0.001 ? ` (−${Math.round(p.drop * 100)})` : "");
             return {
@@ -274,6 +274,10 @@ function pct(p) {
   return `${Math.round((p ?? 0.5) * 100)}%`;
 }
 
+function sideLabel(side) {
+  return side === "white" ? "⚪ White" : "⚫ Black";
+}
+
 function statusLine(pos, ply, engineMoves) {
   if (pos.terminal) {
     return pos.winner === "draw"
@@ -282,13 +286,13 @@ function statusLine(pos, ply, engineMoves) {
   }
   const top = engineMoves.slice(0, 3)
     .map((m) => `${m.san} ${pct(m.winprob)}`).join(", ");
-  if (!ply) return `Starting position. Bot likes: ${top}`;
-  return `${ply.side} played ${ply.played_san} — ${ply.label} ` +
+  if (!ply) return `Starting position. Best for ${sideLabel(pos.turn)}: ${top}`;
+  return `${sideLabel(ply.side)} played ${ply.played_san} — ${ply.label} ` +
     `(${pct(ply.played_winprob)} win` +
-    (ply.best_san !== ply.played_san
-      ? `, best ${ply.best_san} ${pct(ply.best_winprob)})`
+    (ply.best !== ply.played
+      ? `, best was ${ply.best_san} ${pct(ply.best_winprob)})`
       : `)`) +
-    `.  Now: ${top}`;
+    `.  Best for ${sideLabel(pos.turn)} now: ${top}`;
 }
 
 function startPosition() {

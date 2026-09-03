@@ -75,12 +75,11 @@ It beats a 2-ply minimax ~every game and the shallow heuristic suggestion
   for a position (default 3s, solves from 16 empties). This is the one to hit for
   "what should I actually play here."
 - **Analysis board**: every position — the suggested move, the eval graph **and**
-  each move's grade — comes from the same engine, searched to a **fixed depth**
-  (`_ANALYSE_DEPTH`, + exact from `_ANALYSE_ENDGAME` empties) so it's the best
-  move *for whoever is on move* and every position is judged against the same
-  horizon (a best move can't then show a spurious eval drop). Results are cached
-  (`_bm_memo`) across the prefix-cached re-analysis, so building a line costs
-  about one search per move.
+  each move's grade — comes from the same engine search (`_ANALYSE_BUDGET` ~1.0s,
+  + exact from `_ANALYSE_ENDGAME` empties), for **whoever is on move**. The board
+  highlight is the best move *for the side to move in the position shown*; after
+  your move that is the opponent's best reply. Each position is searched once per
+  analysis (`_bm_memo`), and the prefix cache keeps re-analysis to the new tip.
 
 The **eval bar** and **eval graph** are a win-probability for **Black** from that
 engine — exact once the game is close to solved, otherwise a squashed search

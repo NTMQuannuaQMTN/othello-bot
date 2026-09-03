@@ -17,7 +17,6 @@ import json
 import random
 import threading
 import time
-from collections import OrderedDict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -87,15 +86,15 @@ _EP_LOOKAHEAD = 2
 #: play the endgame perfectly — that is where the policy net used to throw won
 #: games with a single move.
 _DEFAULT_ENGINE_BUDGET = 1.0
-#: whole-line analysis (``analyse_line``) searches every position to this **fixed
-#: depth** in plies — same horizon for every position, so a best move can't show
-#: a spurious eval drop and the graph is reproducible run to run.  It only runs
-#: when the engine is on (``_DEFAULT_ENGINE_BUDGET``/``engine_budget`` > 0);
-#: ``POST /api/best_move`` (3s) is the deepest think.
-_ANALYSE_DEPTH = 6
-#: the exact endgame solve is capped tighter here than for live play — every
-#: historical position is analysed, and real endgame mistakes start ~12 empties.
-_ANALYSE_ENDGAME = 12
+#: per-position budget for whole-line analysis (``analyse_line`` — the suggested
+#: move, the eval graph and every grade all come from this one search, for the
+#: side to move).  Within one analysis the same position is searched at most once
+#: (``_bm_memo``); ``POST /api/best_move`` (3s) is the deepest think.
+_ANALYSE_BUDGET = 1.0
+#: the exact endgame solve is capped tighter for analysis than for live play —
+#: every historical position is analysed and real endgame mistakes start ~13
+#: empties.
+_ANALYSE_ENDGAME = 13
 
 #: Corners dominate Othello and the small DQN is nearly blind to them, so corner
 #: safety is assessed directly and folded into a move's expected points — an
@@ -205,12 +204,11 @@ class OthelloBot:
         #: off (raw policy — fast tests). ``engine_endgame`` = empties to solve exactly.
         self.engine_budget: Optional[float] = None
         self.engine_endgame = 16
-        #: fixed-depth analysis searches are deterministic and position-keyed, so
-        #: their results are cached across ``analyse_line`` calls (bounded). Set
-        #: while an ``analyse_line`` is running so ``best_move`` searches to a
-        #: fixed depth instead of a wall-clock budget.
-        self._bm_memo: "OrderedDict[tuple, dict]" = OrderedDict()
-        self._analyse_active = False
+        #: set to a fresh dict while an ``analyse_line`` runs — one whole-line
+        #: analysis looks at each position several times (grade, next-position
+        #: eval, next ply's grade); this memoises the engine search for that call
+        #: and also switches ``best_move`` to the analysis endgame cap.
+        self._bm_memo: Optional[dict] = None
         # version / lineage survive a restart: they ride in the checkpoint meta,
         # written by `_save_version` and read back here.
         self.version = int(self.agent.meta.extra.get("version", 0))
@@ -303,20 +301,16 @@ class OthelloBot:
                 return {"action": a, "san": square_name(rc), "winprob": float(wb),
                         "winprob_stm": float(stm_wp), "score": 0.0, "exact": False,
                         "depth": 0, "nodes": 0, "pv": []}
-            in_line = self._analyse_active        # analyse_line -> fixed depth
+            memo = self._bm_memo
+            in_line = memo is not None            # inside analyse_line
             if in_line:
                 eg = min(eg, _ANALYSE_ENDGAME)
-            memo = self._bm_memo
+                budget = _ANALYSE_BUDGET
             mkey = (board.array.tobytes(), int(board.player), int(eg)) if in_line else None
             if mkey is not None and mkey in memo:
-                memo.move_to_end(mkey)
                 return dict(memo[mkey])
             P, O = _bb.from_grid(board.array, board.player)
-            if in_line:
-                sq, val, meta = _search(P, O, time_budget=4.0, endgame_empties=eg,
-                                        max_depth=_ANALYSE_DEPTH)
-            else:
-                sq, val, meta = _search(P, O, time_budget=budget, endgame_empties=eg)
+            sq, val, meta = _search(P, O, time_budget=budget, endgame_empties=eg)
             rc = action_to_rc(int(sq))
             if meta["exact"]:                                  # margin in discs
                 margin = val - (2 ** 20 if val > 0 else -2 ** 20 if val < 0 else 0)
@@ -335,8 +329,6 @@ class OthelloBot:
             }
             if mkey is not None:
                 memo[mkey] = dict(out)
-                while len(memo) > 6000:
-                    memo.popitem(last=False)
             return out
 
     # -- position / move evaluation ------------------------------------
@@ -727,12 +719,14 @@ class OthelloBot:
         _CORNERS = {(0, 0), (0, 7), (7, 0), (7, 7)}
         _XSQ = {(1, 1), (1, 6), (6, 1), (6, 6)}
         with self._lock:
-            was = self._analyse_active
-            self._analyse_active = True              # -> fixed-depth engine searches
+            outer = self._bm_memo is None
+            if outer:
+                self._bm_memo = {}                   # memoise engine searches this call
             try:
                 return self._analyse_line(actions, top_k, _CORNERS, _XSQ)
             finally:
-                self._analyse_active = was
+                if outer:
+                    self._bm_memo = None
 
     def _analyse_line(self, actions, top_k, _CORNERS, _XSQ) -> dict:
         with self._lock:
