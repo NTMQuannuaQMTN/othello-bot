@@ -115,12 +115,14 @@ _DEFAULT_ENGINE_BUDGET = 1.0
 #: per-position budget for whole-line analysis (``analyse_line`` — the suggested
 #: move, the eval graph and every grade all come from this one search, for the
 #: side to move).  Within one analysis the same position is searched at most once
-#: (``_bm_memo``); ``POST /api/best_move`` (3s) is the deepest think.
-_ANALYSE_BUDGET = 1.0
+#: (``_bm_memo``), and the prefix cache keeps re-analysis to just the new move,
+#: so ~0.3s/move keeps building a line snappy; ``POST /api/best_move`` (3s) is
+#: the deepest think for a single position.
+_ANALYSE_BUDGET = 0.3
 #: the exact endgame solve is capped tighter for analysis than for live play —
-#: every historical position is analysed and real endgame mistakes start ~13
+#: every historical position is analysed and real endgame mistakes start ~12
 #: empties.
-_ANALYSE_ENDGAME = 13
+_ANALYSE_ENDGAME = 12
 
 #: Corners dominate Othello and the small DQN is nearly blind to them, so corner
 #: safety is assessed directly and folded into a move's expected points — an

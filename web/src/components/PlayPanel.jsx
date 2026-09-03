@@ -19,14 +19,34 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame, canFinetune = t
   const [ft, setFt] = useState({ report: null, error: null, running: false });
   const busyRef = useRef(false);
 
-  const refreshEval = useCallback(async () => {
+  // the server API is stateless — the client owns the game and sends it every call
+  const gameRef = useRef(null);
+  const bodyFor = (st, extra) => ({
+    human_color: (st || gameRef.current)?.human_color,
+    history_actions: (st || gameRef.current)?.history_actions || [],
+    ...extra,
+  });
+  const persist = (st) => {
     try {
-      const e = await api("/eval");
+      if (st && !st.game_over) {
+        localStorage.setItem("othello.game",
+          JSON.stringify({ human_color: st.human_color, history_actions: st.history_actions }));
+      } else {
+        localStorage.removeItem("othello.game");
+      }
+    } catch { /* private mode */ }
+  };
+
+  const refreshEval = useCallback(async (history) => {
+    try {
+      const e = await api("/eval", { history_actions: history ?? gameRef.current?.history_actions ?? [] });
       setEvalBlack(e.winprob_black ?? 0.5);
     } catch { /* ignore */ }
   }, []);
 
   const loadGame = useCallback((st) => {
+    gameRef.current = st;
+    persist(st);
     setGame(st);
     setViewPly(null);           // snap back to the live position
   }, []);
@@ -35,8 +55,9 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame, canFinetune = t
     setBusy(true);
     setFt({ report: null, error: null, running: false });
     try {
-      loadGame(await api("/new", { human_color: humanColor }));
-      refreshEval();
+      const st = await api("/new", { human_color: humanColor });
+      loadGame(st);
+      refreshEval(st.history_actions);
     } catch (e) {
       setFt({ report: null, error: e.message, running: false });
     } finally {
@@ -44,7 +65,7 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame, canFinetune = t
     }
   }
 
-  // wait for the API; adopt an in-progress game; honour ?play=black|white|random
+  // wait for the API; resume a game from localStorage; honour ?play=black|white|random
   useEffect(() => {
     let stop = false;
     const auto = new URLSearchParams(location.search).get("play");
@@ -54,11 +75,12 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame, canFinetune = t
         if (stop) return;
         setApiReady(true);
         if (auto && ["black", "white", "random"].includes(auto)) { startGame(auto); return; }
-        let st = await api("/state");   // resume/keep the current game across refreshes
-        if (stop || st.ply === 0) return;
-        // if we refreshed while the bot still owed a reply, collect it
-        if (!st.game_over && !st.your_turn) st = await api("/bot_move", {});
-        if (!stop) { loadGame(st); refreshEval(); }
+        let saved = null;
+        try { saved = JSON.parse(localStorage.getItem("othello.game") || "null"); } catch { /* */ }
+        if (!saved || !saved.history_actions?.length) return;
+        let st = await api("/state", saved);
+        if (!stop && !st.game_over && !st.your_turn) st = await api("/bot_move", bodyFor(st));
+        if (!stop) { loadGame(st); refreshEval(st.history_actions); }
       } catch {
         if (!stop) setTimeout(ping, 2000);
       }
@@ -97,15 +119,15 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame, canFinetune = t
     setBusy(true);
     try {
       // 1. apply the human move only, so it lands on the board immediately
-      let st = await api("/move", { action, bot_reply: false });
+      let st = await api("/move", bodyFor(null, { action, bot_reply: false }));
       loadGame(st);
-      await refreshEval();
+      await refreshEval(st.history_actions);
       // 2. after a short pause, let the bot reply (may be several plies if we pass)
       if (!st.game_over && !st.your_turn) {
         await new Promise((r) => setTimeout(r, BOT_DELAY_MS));
-        st = await api("/bot_move", {});
+        st = await api("/bot_move", bodyFor(st));
         loadGame(st);
-        await refreshEval();
+        await refreshEval(st.history_actions);
       }
     } catch (e) {
       setGame((g) => ({ ...g, _err: e.message }));
@@ -135,12 +157,22 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame, canFinetune = t
     try {
       const report = scope === "all"
         ? await api("/finetune_all", {})
-        : await api("/finetune", { learn_color: scope === "whole" ? "both" : undefined });
+        : await api("/finetune", bodyFor(null, {
+            learn_color: scope === "whole" ? "both"
+              : game.human_color === "black" ? "white" : "black",
+          }));
       setFt({ report, error: null, running: false });
       onBotChanged?.();
     } catch (e) {
       setFt({ report: null, error: e.message, running: false });
     }
+  }
+
+  function newGame() {
+    gameRef.current = null;
+    try { localStorage.removeItem("othello.game"); } catch { /* */ }
+    setGame(null);
+    setViewPly(null);
   }
 
   /* ---------- choose-colour screen ---------- */
@@ -208,7 +240,7 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame, canFinetune = t
 
       <section className="panel">
         <div className="controls nav">
-          <button className="primary" onClick={() => { setGame(null); setViewPly(null); }} disabled={busy}>
+          <button className="primary" onClick={newGame} disabled={busy}>
             New game
           </button>
           <span className="spacer" />
