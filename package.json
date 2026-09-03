@@ -1,0 +1,8 @@
+{
+  "name": "othello-bot",
+  "private": true,
+  "description": "Root shim: Vercel runs `vercel-build` from here if its Root Directory is the repo root. See docs/deploy.md.",
+  "scripts": {
+    "vercel-build": "rm -rf web/api/othello_rl && cp -r src/othello_rl web/api/othello_rl && npm --prefix web install --no-audit --no-fund && npm --prefix web run build"
+  }
+}
