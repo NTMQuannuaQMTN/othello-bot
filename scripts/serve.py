@@ -32,13 +32,20 @@ from othello_rl.webapp.server import serve  # noqa: E402
 
 
 def _rel(p) -> Path:
+    """Resolve a path: absolute as-is, else relative to CWD if that exists
+    (``npm run api`` runs this from web/ with ``../configs/…``), else relative
+    to the repo root."""
     p = Path(p)
-    return p if p.is_absolute() else (_ROOT / p)
+    if p.is_absolute():
+        return p
+    if p.exists():
+        return p.resolve()
+    return _ROOT / p
 
 
 def _resolve_checkpoint(explicit) -> Path:
     if explicit:
-        p = Path(explicit)
+        p = _rel(explicit)
         if p.exists():
             return p
         from othello_rl.rl.checkpoint import resolve_checkpoint
@@ -99,7 +106,7 @@ def main(argv=None) -> int:
           f"  opening move OK ({opening})\n"
           f"  Othello bot API on http://{host}:{port}\n"
           f"  {'serving web/dist' if built else 'front end not built — run: cd web && npm run build'}\n"
-          f"  (Ctrl-C to stop)\n")
+          f"  (Ctrl-C to stop)\n", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
