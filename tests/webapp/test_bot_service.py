@@ -5,19 +5,13 @@ import pytest
 
 from othello_rl.environment.board import BLACK, WHITE, Board
 from othello_rl.rl.agent import DQNAgent, NetworkConfig
-from othello_rl.webapp.bot_service import (
-    FineTuneConfig,
-    OthelloBot,
-    classify_drop,
-)
+from othello_rl.webapp.bot_service import OthelloBot, classify_drop
 
 
 @pytest.fixture(scope="module")
 def bot():
     agent = DQNAgent(NetworkConfig(channels=8, blocks=2, hidden=16), seed=0)
-    return OthelloBot(agent, ft_config=FineTuneConfig(
-        grad_steps=8, batch_size=16, anchor_transitions=120, guardrail_games=6,
-        buffer_capacity=2000, grade_lookahead=2))
+    return OthelloBot(agent)
 
 
 def _random_game(seed=0, max_plies=200):
@@ -181,22 +175,6 @@ def test_analyse_line_reports_strategy(bot):
     assert "winner" in strat
 
 
-def test_finetune_learns_the_chosen_colour(bot):
-    # both colours are valid learn targets; grades come from that side's moves
-    acts, _ = _random_game(20)
-    rb = bot.finetune_from_game(acts, learn_color="white")
-    for g in rb.grades:
-        assert g["side"] == "white"
-
-
-def test_finetune_whole_game_uses_both_sides(bot):
-    acts, _ = _random_game(21)
-    only_white, gw, _, _ = bot._build_game_transitions(acts, "white")
-    only_black, gb, _, _ = bot._build_game_transitions(acts, "black")
-    both, gboth, _, _ = bot._build_game_transitions(acts, "both")
-    assert len(both) == len(only_white) + len(only_black)
-    assert {g["side"] for g in gboth} == {"black", "white"}
-    assert [g["ply"] for g in gboth] == sorted(g["ply"] for g in gboth)  # merged by ply
 
 
 def test_analyse_flags_a_clear_mistake(bot):
@@ -273,48 +251,3 @@ def test_playing_the_top_ranked_move_grades_best(bot):
             assert ply["drop"] == 0.0 and ply["label"] == "Best"
             checked += 1
     assert checked >= 3
-
-
-def test_finetune_from_game_runs_and_guardrails(bot):
-    acts, final = _random_game(2)
-    v0, g0 = bot.version, bot.games_finetuned
-    report = bot.finetune_from_game(acts, learn_color="black")
-    assert report.grad_steps == 8
-    assert np.isfinite(report.loss_before) and np.isfinite(report.loss_after)
-    assert len(report.grades) > 0
-    assert 0.0 <= report.winrate_vs_random_after <= 1.0
-    # version / counter advance iff the guardrail kept the update
-    if report.rolled_back:
-        assert bot.version == v0 and bot.games_finetuned == g0
-        assert report.winrate_vs_random_after < report.winrate_vs_random_before
-    else:
-        assert bot.version == v0 + 1 and bot.games_finetuned == g0 + 1
-
-
-def test_finetune_from_games_batches_multiple(bot):
-    games = [
-        {"moves": _random_game(10)[0], "human_color": "black"},
-        {"moves": _random_game(11)[0], "human_color": "white"},
-        {"moves": _random_game(12)[0], "human_color": "black"},
-    ]
-    v0 = bot.version
-    report = bot.finetune_from_games(games)
-    assert np.isfinite(report.loss_before) and np.isfinite(report.loss_after)
-    assert len(report.grades) > 0
-    # grades are tagged with which game they came from
-    assert {g["game"] for g in report.grades} <= {0, 1, 2}
-    assert 0.0 <= report.winrate_vs_random_after <= 1.0
-    assert bot.version in (v0, v0 + 1)  # +1 unless the guardrail rolled it back
-
-
-def test_reset_to_baseline(bot):
-    import torch
-    baseline = {k: v.clone() for k, v in bot._baseline_state.items()}
-    with torch.no_grad():
-        for p in bot.agent.net.parameters():
-            p.add_(0.5)
-    bot.reset_to_baseline()
-    sd = bot.agent.net.state_dict()
-    for k, v in baseline.items():
-        assert torch.allclose(sd[k].float(), v.float(), atol=1e-5)
-    assert bot.version == 0 and bot.games_finetuned == 0

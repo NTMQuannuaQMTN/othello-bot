@@ -40,7 +40,7 @@ try:
 
     _policy = _HERE / "policy.npz"
     _bot = OthelloBot.load(str(_policy))
-    _app = AppState(_bot, static_dir=None, games_path=None)
+    _app = AppState(_bot, static_dir=None)
     _routes = build_routes(_app)
 except Exception:  # noqa: BLE001
     _boot_error = traceback.format_exc()

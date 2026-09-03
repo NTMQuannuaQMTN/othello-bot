@@ -7,7 +7,7 @@ import pytest
 
 from othello_rl.environment.board import Board
 from othello_rl.rl.agent import DQNAgent, NetworkConfig
-from othello_rl.webapp.bot_service import FineTuneConfig, OthelloBot
+from othello_rl.webapp.bot_service import OthelloBot
 from othello_rl.webapp.moves import parse_game, replay_positions
 from othello_rl.webapp.server import serve
 
@@ -45,9 +45,7 @@ def test_replay_positions_length_and_content():
 @pytest.fixture(scope="module")
 def server():
     agent = DQNAgent(NetworkConfig(channels=8, blocks=2, hidden=16), seed=0)
-    bot = OthelloBot(agent, ft_config=FineTuneConfig(
-        grad_steps=6, batch_size=16, anchor_transitions=120, guardrail_games=4,
-        buffer_capacity=1500, grade_lookahead=2))
+    bot = OthelloBot(agent)
     httpd = serve(bot, port=8912)
     th = threading.Thread(target=httpd.serve_forever, daemon=True)
     th.start()
@@ -102,59 +100,6 @@ def test_bot_move_tolerates_a_get(server):
     with urllib.request.urlopen(server + "/api/bot_move") as r:  # GET, no body/history
         assert r.status == 200
         assert "grid" in json.loads(r.read())
-
-
-def test_games_are_recorded_and_finetune_all(tmp_path):
-    from othello_rl.webapp.server import serve as _serve
-    agent = DQNAgent(NetworkConfig(channels=8, blocks=2, hidden=16), seed=1)
-    bot = OthelloBot(agent, state_dir=str(tmp_path), ft_config=FineTuneConfig(
-        grad_steps=4, batch_size=16, anchor_transitions=80, guardrail_games=4,
-        buffer_capacity=1000, grade_lookahead=2))
-    httpd = _serve(bot, port=8913)
-    th = threading.Thread(target=httpd.serve_forever, daemon=True)
-    th.start()
-    base = "http://127.0.0.1:8913"
-    try:
-        import random
-        assert _call(base, "/api/games")["count"] == 0
-        for g in range(2):
-            c = _Client(base, "black" if g == 0 else "white")
-            st = c.new()
-            rng = random.Random(g)
-            while not st["game_over"]:
-                st = (c.move(rng.choice(st["legal_actions"]))
-                      if st["your_turn"] else c.bot_move())
-        games = _call(base, "/api/games")
-        assert games["count"] == 2
-        recs = [json.loads(l) for l in (tmp_path / "games.jsonl").read_text().splitlines()]
-        assert len(recs) == 2
-        assert recs[0]["human_color"] == "black" and recs[1]["human_color"] == "white"
-        assert all(r["winner"] in ("black", "white", "draw") and "moves" in r for r in recs)
-
-        rep = _call(base, "/api/finetune_all", {})
-        assert rep["n_games"] == 2 and "loss_after" in rep
-    finally:
-        httpd.shutdown()
-
-
-def test_explicit_save_game_and_dedup(tmp_path):
-    from othello_rl.webapp.server import serve as _serve
-    agent = DQNAgent(NetworkConfig(channels=8, blocks=2, hidden=16), seed=2)
-    bot = OthelloBot(agent, state_dir=str(tmp_path))
-    httpd = _serve(bot, port=8914)
-    th = threading.Thread(target=httpd.serve_forever, daemon=True)
-    th.start()
-    base = "http://127.0.0.1:8914"
-    try:
-        r1 = _call(base, "/api/games", {"transcript": "f5d6c3d3c4f4"})
-        assert r1["saved"] is True and r1["count"] == 1
-        r2 = _call(base, "/api/games", {"transcript": "f5d6c3d3c4f4"})   # same line
-        assert r2["saved"] is False and r2["reason"] == "already saved"
-        assert _call(base, "/api/games")["count"] == 1
-        rec = json.loads((tmp_path / "games.jsonl").read_text().splitlines()[0])
-        assert rec["winner"] in ("black", "white", "draw") and len(rec["moves"]) == 6
-    finally:
-        httpd.shutdown()
 
 
 def test_index_serves_html(server):
@@ -234,18 +179,3 @@ def test_illegal_move_returns_400(server):
         assert e.code == 400
         assert "illegal" in json.loads(e.read())["error"].lower()
 
-
-def test_finetune_endpoint(server):
-    c = _Client(server, "white")
-    st = c.new()
-    import random
-    rng = random.Random(5)
-    while not st["game_over"]:
-        st = c.move(rng.choice(st["legal_actions"])) if st["your_turn"] else c.bot_move()
-    rep = _call(server, "/api/finetune",
-                {"history_actions": st["history_actions"], "learn_color": "black"})
-    assert "grades" in rep and "loss_after" in rep
-    assert isinstance(rep["rolled_back"], bool)
-
-    reset = _call(server, "/api/bot/reset", {})
-    assert reset["version"] == 0

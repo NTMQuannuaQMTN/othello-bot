@@ -2,13 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import BoardArea from "./BoardArea.jsx";
 import EvalGraph from "./EvalGraph.jsx";
 import MoveList from "./MoveList.jsx";
-import FineTuneResult from "./FineTuneResult.jsx";
 import { api, sanToIdx } from "../api.js";
 
 const SUMMARY_ORDER = ["Blunder", "Mistake", "Inaccuracy", "Good", "Excellent", "Best"];
 const EMPTY = { positions: [startPosition()], plies: [], eval_graph: [{ ply: -1, eval_black: 0.5 }], summary: { black: {}, white: {} } };
 
-export default function AnalysisPanel({ loadLine, onBotChanged, canFinetune = true }) {
+export default function AnalysisPanel({ loadLine }) {
   const [line, setLine] = useState([]);
   const [cursor, setCursor] = useState(0);
   const [data, setData] = useState(EMPTY);
@@ -16,28 +15,6 @@ export default function AnalysisPanel({ loadLine, onBotChanged, canFinetune = tr
   const [error, setError] = useState(null);
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
-  const [ft, setFt] = useState({ report: null, error: null, running: null });
-  const [saved, setSaved] = useState(null);
-
-  async function saveGame() {
-    try {
-      const r = await api("/games", { moves: line });
-      setSaved(r.saved ? `saved · ${r.count} games` : `${r.reason} · ${r.count} games`);
-    } catch (e) {
-      setSaved(e.message);
-    }
-  }
-
-  async function learnFrom(color) {
-    setFt({ report: null, error: null, running: color });
-    try {
-      const report = await api("/finetune", { moves: line, learn_color: color });
-      setFt({ report, error: null, running: null });
-      onBotChanged?.();
-    } catch (e) {
-      setFt({ report: null, error: e.message, running: null });
-    }
-  }
 
   const analyse = useCallback(async (moves) => {
     setBusy(true);
@@ -53,7 +30,7 @@ export default function AnalysisPanel({ loadLine, onBotChanged, canFinetune = tr
     }
   }, []);
 
-  useEffect(() => { analyse(line); setSaved(null); }, [line, analyse]);
+  useEffect(() => { analyse(line); }, [line, analyse]);
 
   // deep link: ?analyse=<transcript>  (one-time, on mount)
   useEffect(() => {
@@ -226,27 +203,6 @@ export default function AnalysisPanel({ loadLine, onBotChanged, canFinetune = tr
             );
           })}
         </div>
-
-        {canFinetune && line.length > 3 && (
-          <div className="learn-from">
-            <span className="alt">Teach the bot this game:</span>
-            <button disabled={!!ft.running} onClick={saveGame}>
-              {saved ? saved : "Save to dataset"}
-            </button>
-            <button className="primary" disabled={!!ft.running} onClick={() => learnFrom("both")}>
-              {ft.running === "both" ? "learning…" : "Learn the whole game"}
-            </button>
-            <button disabled={!!ft.running} onClick={() => learnFrom("black")}>
-              {ft.running === "black" ? "learning…" : "⚫ Black only"}
-            </button>
-            <button disabled={!!ft.running} onClick={() => learnFrom("white")}>
-              {ft.running === "white" ? "learning…" : "⚪ White only"}
-            </button>
-          </div>
-        )}
-        {(ft.report || ft.error) && (
-          <FineTuneResult report={ft.report} error={ft.error} />
-        )}
 
         <MoveList
           items={data.plies.map((p) => {

@@ -269,26 +269,6 @@ def test_run_match_alternates_colours_and_totals_add_up():
     assert [r.rl_color for r in summary.records] == ["black", "white", "black", "white"]
     assert 0.0 <= summary.win_rate <= 1.0
 
-
-# --------------------------------------------------------------------------- #
-# learning from the match
-# --------------------------------------------------------------------------- #
-def test_records_to_training_games_uses_real_moves_and_own_colour():
-    from othello_rl.eval_external.match import records_to_training_games
-
-    recs = run_match(_bot(), FakeEngine(GreedyAgent()), games=2,
-                     opening_plies=2, seed=4, verbose=False).records
-    games = records_to_training_games(recs)
-    assert len(games) == 2
-    for g, r in zip(games, recs):
-        assert g["learn_color"] == r.rl_color               # learns the bot's own side
-        assert all(0 <= a < 64 for a in g["actions"])       # real placements only, no pass
-        assert g["actions"] == [m["action"] for m in r.moves if not m["pass"]]
-    # a record with an error is dropped
-    recs[0].error = "boom"
-    assert len(records_to_training_games(recs)) == 1
-
-
 def test_best_move_bot_plays_legally_and_differs_from_policy():
     from othello_rl.eval_external.match import BestMoveBot
     from othello_rl.rl.checkpoint import Registry
@@ -327,72 +307,6 @@ def test_run_match_with_best_move_bot():
     assert summary.games == 2 and all(r.error is None for r in summary.records)
 
 
-def test_finetune_on_records_runs_and_respects_the_guardrail():
-    from othello_rl.rl.checkpoint import Registry
-    from othello_rl.webapp.bot_service import FineTuneConfig, OthelloBot
-    from othello_rl.eval_external.match import finetune_on_records
-
-    ft = FineTuneConfig(grad_steps=4, anchor_transitions=120, buffer_capacity=2000,
-                        guardrail_games=8)
-    bot = OthelloBot.load(str(Registry.load().active_checkpoint_path()), ft_config=ft)
-    before = [p.detach().clone() for p in bot.agent.net.parameters()]
-
-    recs = run_match(bot, FakeEngine(GreedyAgent()), games=2, opening_plies=2,
-                     seed=7, verbose=False).records
-    rep = finetune_on_records(bot, recs, grad_steps=4)
-
-    assert rep.grad_steps == 4
-    assert 0.0 <= rep.winrate_vs_random_before <= 1.0
-    assert isinstance(rep.rolled_back, bool)
-    import torch
-    after = list(bot.agent.net.parameters())
-    changed = any(not torch.equal(b, a) for b, a in zip(before, after))
-    # rolled back -> weights restored exactly; kept -> weights moved
-    assert changed == (not rep.rolled_back)
-
-
-def test_train_vs_egaroucid_end_to_end_if_available(tmp_path):
-    """The long-run trainer, scaled to a few seconds — needs the executable."""
-    try:
-        find_egaroucid()
-    except EgaroucidError:
-        pytest.skip("Egaroucid executable not built/available")
-    import importlib.util
-    from pathlib import Path as _P
-    root = _P(__file__).resolve().parents[2]
-    spec = importlib.util.spec_from_file_location(
-        "train_vs_egaroucid", root / "scripts" / "train_vs_egaroucid.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    out = tmp_path / "run"
-    rc = mod.main([
-        "--seconds", "5", "--games", "2", "--level-start", "0", "--level-end", "3",
-        "--elo-start", "500", "--elo-band", "1000", "--elo-k", "120",
-        "--grad-steps", "2", "--guardrail-games", "4", "--anchor-transitions", "40",
-        "--grade-lookahead", "1", "--best-eval-every", "1", "--best-eval-games", "6",
-        "--eval-games", "6", "--no-best-moves", "--out", str(out),
-    ])
-    assert rc == 0
-    assert (out / "final.pt").is_file()
-    assert (out / "progress.jsonl").is_file()
-    assert (out / "peak_elo.pt").is_file()
-    run = json.loads((out / "run.json").read_text())
-    assert run["status"] == "done"
-    assert run["rounds"] >= 1
-    assert set(run["eval"]) == {"base", "final", "best"}
-    assert "elo_end" in run and "peak_elo" in run
-    rows = [json.loads(l) for l in (out / "progress.jsonl").read_text().splitlines() if l.strip()]
-    assert rows and all({"round", "level", "elo", "opp_elo", "review"} <= set(r) for r in rows)
-    for r in rows:
-        # level tracks Elo: floor(elo / band), clamped [0, 3]
-        assert r["level"] == max(0, min(3, int(r["elo_before"] // 1000)))
-        assert r["opp_elo"] == 1000 * (r["level"] + 1)
-        assert {"graded", "bad", "reinforced"} <= set(r["review"])
-
-
-# --------------------------------------------------------------------------- #
-# optional: a real game against a built Egaroucid, if one is on disk
-# --------------------------------------------------------------------------- #
 def test_real_egaroucid_one_game_if_available():
     try:
         exe = find_egaroucid()

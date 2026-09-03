@@ -87,10 +87,7 @@ def test_serve_script_boots_and_serves(tmp_path):
     import urllib.request
 
     cfg = tmp_path / "web.yaml"
-    cfg.write_text(
-        f"host: 127.0.0.1\nport: 8771\ncheckpoint: models/othello_bot_v1.pt\n"
-        f"state_dir: {tmp_path / 'state'}\nfinetune: {{grad_steps: 4, anchor_transitions: 60}}\n"
-    )
+    cfg.write_text("host: 127.0.0.1\nport: 8771\ncheckpoint: models/othello_bot_v1.pt\n")
     # run from web/ (as `npm run api` does) with a repo-root-relative config &
     # checkpoint — serve.py must still find them.
     proc = subprocess.Popen(
@@ -124,34 +121,6 @@ def test_eval_bot_script_smoke(tmp_path):
     data = __import__("json").loads((run / "bot_eval.json").read_text())
     assert set(data["vs"]) == set(data["panel"])
     assert "minimax:2" in data["panel"]
-
-
-def test_finetune_from_games_script(tmp_path):
-    import json as _json
-    import random as _random
-    from othello_rl.environment.board import Board
-
-    # build a couple of fake recorded games
-    games = tmp_path / "games.jsonl"
-    lines = []
-    for s in (1, 2):
-        rng = _random.Random(s)
-        st = Board.initial()
-        acts = []
-        while not st.is_terminal():
-            lm = st.legal_moves()
-            if not lm:
-                st = st.apply(None); acts.append(64); continue
-            m = rng.choice(lm); acts.append(m[0] * 8 + m[1]); st = st.apply(m)
-        lines.append(_json.dumps({"moves": acts, "human_color": "black" if s == 1 else "white",
-                                  "winner": "black"}))
-    games.write_text("\n".join(lines) + "\n")
-
-    r = _run([str(SCRIPTS / "finetune_from_games.py"), "--games", str(games),
-              "--checkpoint", "models/othello_bot_v1.pt", "--grad-steps", "6",
-              "--guardrail-games", "6", "--out", str(tmp_path / "v2.pt")])
-    assert r.returncode == 0, r.stderr
-    assert "TD loss" in r.stdout
 
 
 def test_bot_cli_protocol():

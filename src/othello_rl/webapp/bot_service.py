@@ -40,29 +40,12 @@ from othello_rl.environment.environment import (
     legal_action_mask,
 )
 from othello_rl.rl.numpy_policy import NumpyPolicy
-from othello_rl.rl.replay_buffer import ReplayBuffer
 
-#: fine-tuning (and the DQN checkpoint format) needs PyTorch; the deploy build
-#: serves with :class:`NumpyPolicy` and never imports it.  ``_require_torch``
-#: raises a clean error if a training-only path is hit without it.
-try:  # pragma: no cover - trivial
-    import torch as _torch  # noqa: F401
-    _HAS_TORCH = True
-except Exception:  # pragma: no cover
-    _HAS_TORCH = False
-
-
-def _require_torch(what: str):
-    if not _HAS_TORCH:
-        raise RuntimeError(f"{what} needs the full install (PyTorch); "
-                           "this deployment serves inference only.")
-    import torch
-    return torch
-
-
+#: This module is **inference only** and never imports torch. A ``.pt``
+#: checkpoint (local dev) still loads via :class:`DQNAgent` for the forward pass;
+#: an exported ``.npz`` (the web deploy) loads via the torch-free
+#: :class:`NumpyPolicy`.  Training lives in ``scripts/train_*.py``.
 def _load_agent(checkpoint: str):
-    """A :class:`NumpyPolicy` for an exported ``.npz`` / model dir (torch-free),
-    else a :class:`DQNAgent` from a ``.pt`` checkpoint."""
     p = Path(checkpoint)
     if p.suffix == ".npz" or (p.is_dir() and (p / "policy.npz").is_file()):
         return NumpyPolicy.load(p)
@@ -185,50 +168,17 @@ class MoveAnalysis:
     top_moves: List[dict] = field(default_factory=list)
 
 
-@dataclass
-class FineTuneReport:
-    version: int
-    games_finetuned: int
-    grad_steps: int
-    loss_before: float
-    loss_after: float
-    n_reinforced: int
-    n_penalised: int
-    winrate_vs_random_before: float
-    winrate_vs_random_after: float
-    rolled_back: bool
-    grades: List[dict]
-
-
-@dataclass
-class FineTuneConfig:
-    lr: float = 1e-4
-    grad_steps: int = 120
-    batch_size: int = 64
-    emphasis: int = 6              # times each game transition is added to the buffer
-    blunder_penalty: float = 0.8
-    great_bonus: float = 0.3
-    buffer_capacity: int = 30_000
-    anchor_transitions: int = 2_000
-    guardrail_games: int = 60
-    guardrail_margin: float = 0.10  # roll back if winrate vs random drops by > this
-    grade_lookahead: int = 3        # plies of look-ahead when judging moves for training
-
-
 class OthelloBot:
-    """Thread-safe bot: move selection, analysis, and self-fine-tuning."""
+    """Thread-safe bot: move selection + analysis.  Inference only — training is
+    done offline with ``scripts/train_*.py`` and promoted with
+    ``scripts/promote_model.py``."""
 
-    def __init__(self, agent, *, source_path: Optional[str] = None,
-                 state_dir: Optional[str] = None, ft_config: Optional[FineTuneConfig] = None,
-                 seed: int = 0):
+    def __init__(self, agent, *, source_path: Optional[str] = None, seed: int = 0):
         self.agent = agent
         if hasattr(agent, "net"):
             agent.net.eval()
-        self.can_finetune = _HAS_TORCH and hasattr(agent, "net")
         self.source_path = source_path
-        self.ft = ft_config or FineTuneConfig()
         self._lock = threading.RLock()
-        self._rng = random.Random(seed)
         #: search-engine settings for move selection / eval. ``engine_budget``
         #: ``None`` -> :data:`_DEFAULT_ENGINE_BUDGET`; ``<= 0`` turns the engine
         #: off (raw policy — fast tests). ``engine_endgame`` = empties to solve exactly.
@@ -239,39 +189,9 @@ class OthelloBot:
         #: eval, next ply's grade); this memoises the engine search for that call
         #: and also switches ``best_move`` to the analysis endgame cap.
         self._bm_memo: Optional[dict] = None
-        # version / lineage survive a restart: they ride in the checkpoint meta,
-        # written by `_save_version` and read back here.
+        # version / lineage are informational, read from the checkpoint meta.
         self.version = int(self.agent.meta.extra.get("version", 0))
         self.parent = self.agent.meta.extra.get("parent")
-        self.games_finetuned = int(self.agent.meta.extra.get("games_finetuned", 0))
-        # the *true* baseline for `reset_to_baseline`: the base checkpoint, not
-        # whatever fine-tuned state we happened to load. Only fall back to the
-        # loaded weights if the base isn't a distinct readable file.
-        self._baseline_is_true = False
-        self._baseline_state = self._load_baseline_state(agent)
-        self._buffer: Optional[ReplayBuffer] = None
-        self.state_dir = Path(state_dir) if state_dir else None
-        if self.state_dir:
-            (self.state_dir / "history").mkdir(parents=True, exist_ok=True)
-
-    def _load_baseline_state(self, agent):
-        """The weights `reset_to_baseline` restores. Prefer the base checkpoint
-        (`source_path`) so a restart after a kept fine-tune still resets to the
-        real baseline, not the fine-tuned net.  ``None`` for a torch-free
-        (:class:`NumpyPolicy`) agent — it cannot be fine-tuned anyway."""
-        self._baseline_is_true = False
-        if not hasattr(agent, "net"):
-            return None
-        src = self.source_path
-        if src and Path(src).is_file() and Path(src).suffix != ".npz":
-            try:
-                from othello_rl.rl.agent import DQNAgent
-                base = DQNAgent.from_checkpoint(src, device=str(agent.device))
-                self._baseline_is_true = True
-                return copy.deepcopy(base.net.state_dict())
-            except Exception:  # pragma: no cover - corrupt/mismatched base
-                pass
-        return copy.deepcopy(agent.net.state_dict())
 
     # -- construction ------------------------------------------------------
     @classmethod
@@ -880,307 +800,6 @@ class OthelloBot:
                 "strategy": strat,
             }
 
-    # -- fine-tuning -----------------------------------------------------
-    def _ensure_buffer(self) -> ReplayBuffer:
-        if self._buffer is None:
-            self._buffer = ReplayBuffer(self.ft.buffer_capacity, seed=self._rng.randrange(2**31))
-            self._fill_anchor(self.ft.anchor_transitions)
-        return self._buffer
-
-    def _fill_anchor(self, n: int) -> None:
-        """Seed the replay buffer with the bot's own play vs Random/Greedy so a
-        single fine-tune game can't overwrite the whole policy."""
-        buf = self._buffer
-        opponents = [RandomAgent(seed=1), RandomAgent(seed=2), GreedyAgent()]
-        added = 0
-        g = 0
-        while added < n:
-            opp = opponents[g % len(opponents)]
-            bot_color = BLACK if g % 2 == 0 else WHITE
-            g += 1
-            for tr in self._rollout(opp, bot_color):
-                buf.add(*tr)
-                added += 1
-
-    def _rollout(self, opp, bot_color: int):
-        """Play one game (greedy bot vs opp) and yield bot-perspective
-        transitions (obs, action, reward, next_obs, done, next_mask)."""
-        state = Board.initial()
-        transitions = []
-        while not state.is_terminal():
-            if state.player == bot_color:
-                obs = encode_observation(state)
-                mask = legal_action_mask(state)
-                a = int(self.agent.greedy_act(obs, mask))
-                move = None if a == PASS_ACTION else action_to_rc(a)
-                nxt = state.apply(move)
-                # advance through opponent replies
-                while not nxt.is_terminal() and nxt.player != bot_color:
-                    om = opp.select_move(nxt)
-                    nxt = nxt.apply(om)
-                done = nxt.is_terminal()
-                r = 0.0
-                if done:
-                    w = nxt.winner()
-                    r = 1.0 if w == bot_color else (-1.0 if w == opponent(bot_color) else 0.0)
-                transitions.append((obs, a, r, encode_observation(nxt),
-                                    done, legal_action_mask(nxt)))
-                state = nxt
-            else:
-                state = state.apply(opp.select_move(state))
-        return transitions
-
-    def _build_game_transitions(self, actions: Sequence[int], learn_color: str):
-        """Build DQN transitions from a game for the requested side(s).
-
-        ``learn_color`` is ``"black"``, ``"white"`` or ``"both"`` (every move in
-        the list, each side from its own perspective). Returns
-        ``(transitions, grades, n_reinforced, n_penalised)``.
-        """
-        if str(learn_color).lower().startswith(("both", "all")):
-            tt, gg, nr, npn = [], [], 0, 0
-            for side in ("black", "white"):
-                t, g, a, b = self._build_game_transitions(actions, side)
-                tt += t; gg += g; nr += a; npn += b
-            gg.sort(key=lambda x: x["ply"])
-            return tt, gg, nr, npn
-
-        cfg = self.ft
-        learn_side = BLACK if str(learn_color).lower().startswith("b") else WHITE
-        states = [Board.initial()]
-        for a in actions:
-            a = int(a)
-            mv = None if (a == PASS_ACTION or not states[-1].legal_moves()) else action_to_rc(a)
-            states.append(states[-1].apply(mv))
-        winner = states[-1].winner() if states[-1].is_terminal() else 0
-
-        grades: List[dict] = []
-        trans: List[tuple] = []
-        n_reinf = n_pen = 0
-        tt: dict = {}
-        look = int(getattr(self.ft, "grade_lookahead", _EP_LOOKAHEAD))
-
-        for i, a in enumerate(actions):
-            a = int(a)
-            s = states[i]
-            if s.is_terminal() or s.player != learn_side or not s.legal_moves():
-                continue
-            g = self.grade_move(s, a, tt, lookahead=look)
-            label, best, coach_a = g["label"], g["bot_best"], g["coach_best"]
-            gives_c, takes_c = g["gives_corner"], g["takes_corner"]
-            big_loss, coach_drop = g["big_loss"], g["coach_drop"]
-
-            j = i + 1
-            while j < len(states) and not states[j].is_terminal() and states[j].player != learn_side:
-                j += 1
-            nxt = states[j] if j < len(states) else states[-1]
-            done = nxt.is_terminal()
-            r = 0.0
-            if done:
-                r = 1.0 if winner == learn_side else (-1.0 if winner == opponent(learn_side) else 0.0)
-            obs, next_obs = encode_observation(s), encode_observation(nxt)
-            next_mask = legal_action_mask(nxt)
-            trans.append((obs, a, r, next_obs, done, next_mask))
-
-            # Shaping is deliberately conservative: the base transition above
-            # already carries the game outcome. We only add an *extra* signal for
-            # things we can actually stand behind — conceding vs taking a corner,
-            # a clear positional blunder, or the genuine top move in a won game.
-            penalised = reinforced = False
-            if gives_c and coach_a != a:
-                # handing over a corner: hard-penalise it, reward the safe move
-                trans.append((obs, a, -cfg.blunder_penalty, next_obs, True, next_mask))
-                trans.append((obs, a, -cfg.blunder_penalty, next_obs, True, next_mask))
-                trans.append((obs, coach_a, cfg.great_bonus, next_obs, True, next_mask))
-                penalised, n_pen = True, n_pen + 1
-            elif (label in ("Mistake", "Blunder") or big_loss) and coach_a != a \
-                    and coach_drop > 0.08:
-                # the positional check clearly disagrees -> penalise, show the fix
-                trans.append((obs, a, -cfg.blunder_penalty, next_obs, True, next_mask))
-                trans.append((obs, coach_a, cfg.great_bonus, next_obs, True, next_mask))
-                penalised, n_pen = True, n_pen + 1
-            elif takes_c:
-                # taking a corner is (almost) always right — reinforce it
-                trans.append((obs, a, max(cfg.great_bonus, r if done else 0.0),
-                              next_obs, True, next_mask))
-                reinforced, n_reinf = True, n_reinf + 1
-            elif label == "Best" and a == best and (coach_a == a or coach_drop < 0.03) \
-                    and (r > 0 or not done):
-                # unambiguously the best move (both the bot and the check agree)
-                # and it didn't lose the game -> a small reinforcement
-                trans.append((obs, a, max(cfg.great_bonus, r if done else 0.0),
-                              next_obs, True, next_mask))
-                reinforced, n_reinf = True, n_reinf + 1
-
-            grades.append({
-                "ply": i, "side": _side(s.player), "played": a, "played_san": _san(a),
-                "best": int(best), "best_san": _san(int(best)),
-                "coach": int(coach_a), "coach_san": _san(int(coach_a)),
-                "q_played": float(g["q"][a]), "q_best": float(g["q"][best]),
-                "drop": g["regret"], "label": label, "glyph": g["glyph"],
-                "penalised": penalised, "reinforced": reinforced,
-            })
-        return trans, grades, n_reinf, n_pen
-
-    def _run_finetune(self, trans, grades, n_reinf, n_pen, progress=None) -> FineTuneReport:
-        """Push ``trans`` into the anchored buffer, train, and keep the update
-        only if it doesn't weaken the bot vs Random (paired, same seed)."""
-        if not self.can_finetune:
-            raise RuntimeError("fine-tuning needs the full install (PyTorch); "
-                               "this deployment serves inference only.")
-        cfg = self.ft
-        buf = self._ensure_buffer()
-        for _ in range(cfg.emphasis):
-            for tr in trans:
-                buf.add(*tr)
-
-        wr_before = self._winrate_vs_random(cfg.guardrail_games)
-        prev_state = copy.deepcopy(self.agent.net.state_dict())
-        loss_before, loss_after = self._train(cfg, progress)
-        wr_after = self._winrate_vs_random(cfg.guardrail_games)
-
-        rolled_back = wr_after < wr_before - cfg.guardrail_margin
-        self._line_cache = None            # weights changed -> stale analysis
-        if rolled_back:
-            self.agent.net.load_state_dict(prev_state)
-            self.agent.net.eval()
-        else:
-            self.version += 1
-            self.games_finetuned += 1
-            self.agent.meta.extra["games_finetuned"] = self.games_finetuned
-            self.agent.meta.extra["version"] = self.version
-            self.agent.meta.extra["parent"] = self.parent
-            self._save_version()
-
-        return FineTuneReport(
-            version=self.version, games_finetuned=self.games_finetuned,
-            grad_steps=cfg.grad_steps, loss_before=loss_before, loss_after=loss_after,
-            n_reinforced=n_reinf, n_penalised=n_pen,
-            winrate_vs_random_before=wr_before, winrate_vs_random_after=wr_after,
-            rolled_back=rolled_back, grades=grades,
-        )
-
-    def finetune_from_game(self, actions: Sequence[int], learn_color: str,
-                           progress=None) -> FineTuneReport:
-        """Fine-tune from one game, learning ``learn_color``'s moves."""
-        with self._lock:
-            trans, grades, n_reinf, n_pen = self._build_game_transitions(actions, learn_color)
-            return self._run_finetune(trans, grades, n_reinf, n_pen, progress)
-
-    def finetune_from_games(self, games: Sequence[dict], progress=None,
-                            learn_color: Optional[str] = None) -> FineTuneReport:
-        """Fine-tune from many recorded games at once (one training pass, one
-        guardrail check).
-
-        ``learn_color`` overrides the side to learn for every game
-        (``"black"`` / ``"white"`` / ``"both"``); by default each game teaches
-        the bot *its own* moves (opposite of the recorded ``human_color``).
-        """
-        with self._lock:
-            all_trans: List[tuple] = []
-            all_grades: List[dict] = []
-            n_reinf = n_pen = 0
-            for gi, game in enumerate(games):
-                actions = game.get("moves") or game.get("actions") or []
-                if learn_color:
-                    lc = learn_color
-                elif game.get("learn_color"):
-                    lc = game["learn_color"]
-                else:
-                    hc = str(game.get("human_color", "white")).lower()
-                    lc = "white" if hc.startswith("b") else "black"
-                t, gr, nr, np_ = self._build_game_transitions(actions, lc)
-                all_trans += t
-                for row in gr:
-                    row["game"] = gi
-                all_grades += gr
-                n_reinf += nr
-                n_pen += np_
-                if progress:
-                    progress(gi + 1, len(games))
-            return self._run_finetune(all_trans, all_grades, n_reinf, n_pen)
-
-    def _train(self, cfg: FineTuneConfig, progress=None) -> Tuple[float, float]:
-        torch = _require_torch("fine-tuning")
-        import torch.nn.functional as F
-        from othello_rl.rl.network import masked_q
-
-        buf = self._buffer
-        net = self.agent.net
-        target = self.agent.clone_network()
-        opt = torch.optim.Adam(net.parameters(), lr=cfg.lr)
-        dev = self.agent.device
-
-        def batch_loss(train: bool) -> float:
-            b = buf.sample(min(cfg.batch_size, len(buf)))
-            obs = torch.as_tensor(b.obs, device=dev)
-            act = torch.as_tensor(b.actions, device=dev)
-            rew = torch.as_tensor(b.rewards, device=dev)
-            nobs = torch.as_tensor(b.next_obs, device=dev)
-            done = torch.as_tensor(b.dones, device=dev)
-            nmask = torch.as_tensor(b.next_masks, device=dev)
-            net.train(train)
-            q = net(obs).gather(1, act.unsqueeze(1)).squeeze(1)
-            with torch.no_grad():
-                nq_online = masked_q(net(nobs), nmask)
-                na = nq_online.argmax(1, keepdim=True)
-                nv = masked_q(target(nobs), nmask).gather(1, na).squeeze(1)
-                nv = torch.nan_to_num(nv, neginf=0.0)
-                tgt = rew + 0.99 * (1.0 - done) * nv
-            loss = F.smooth_l1_loss(q, tgt)
-            if train:
-                opt.zero_grad(set_to_none=True)
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(net.parameters(), 10.0)
-                opt.step()
-            return float(loss.item())
-
-        net.eval()
-        loss_before = np.mean([batch_loss(False) for _ in range(5)])
-        for step in range(cfg.grad_steps):
-            batch_loss(True)
-            if step % 200 == 199:
-                target.load_state_dict(net.state_dict())
-            if progress:
-                progress(step + 1, cfg.grad_steps)
-        net.eval()
-        loss_after = np.mean([batch_loss(False) for _ in range(5)])
-        return float(loss_before), float(loss_after)
-
-    def _winrate_vs_random(self, n: int) -> float:
-        from othello_rl.evaluation.tournament import play_match
-        m = play_match(self.agent, "random", num_games=n, seed=99, opening_plies=4)
-        return m.a_win_rate
-
-    # -- persistence ---------------------------------------------------
-    def _save_version(self) -> None:
-        """Persist the fine-tuned scratch model to `state_dir` (never to
-        `models/` or `checkpoints/production/` — promotion is script-only)."""
-        if not self.state_dir:
-            return
-        extra = {"version": self.version, "parent": self.parent,
-                 "base_checkpoint": self.source_path}
-        self.agent.save(self.state_dir / "current.pt", **extra)
-        self.agent.save(self.state_dir / "history" / f"v{self.version:04d}.pt", **extra)
-        (self.state_dir / "info.json").write_text(json.dumps(self.info(), indent=2))
-
-    def reset_to_baseline(self) -> None:
-        if not self.can_finetune:
-            raise RuntimeError("no fine-tune state to reset on this deployment.")
-        with self._lock:
-            self.agent.net.load_state_dict(self._baseline_state)
-            self.agent.net.eval()
-            self.version = 0
-            self.games_finetuned = 0
-            self.parent = None
-            self.agent.meta.extra["games_finetuned"] = 0
-            self.agent.meta.extra.pop("version", None)
-            self.agent.meta.extra.pop("parent", None)
-            self._buffer = None
-            self._line_cache = None
-            if self.state_dir:
-                self._save_version()
-
     def info(self) -> dict:
         nc = self.agent.net_config
         g = nc.get if isinstance(nc, dict) else (lambda k, d=None: getattr(nc, k, d))
@@ -1192,13 +811,10 @@ class OthelloBot:
             "name": self.agent.name,
             "version": self.version,
             "parent": self.parent,
-            "games_finetuned": self.games_finetuned,
             "source": self.source_path,
-            "baseline": "base-checkpoint" if self._baseline_is_true else "loaded-state",
             "params": n_params,
             "network": {"channels": g("channels"), "blocks": g("blocks"), "hidden": g("hidden")},
             "train_env_steps": int(self.agent.meta.env_steps),
-            "can_finetune": self.can_finetune,
         }
 
 

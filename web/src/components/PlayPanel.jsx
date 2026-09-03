@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import BoardArea from "./BoardArea.jsx";
 import MoveList from "./MoveList.jsx";
-import FineTuneResult from "./FineTuneResult.jsx";
 import { api, cap, sanToIdx } from "../api.js";
 
 const INITIAL_GRID = (() => {
@@ -10,13 +9,13 @@ const INITIAL_GRID = (() => {
   return g;
 })();
 
-export default function PlayPanel({ onBotChanged, onAnalyzeGame, canFinetune = true }) {
+export default function PlayPanel({ onAnalyzeGame }) {
   const [game, setGame] = useState(null);      // null until a game is started
   const [viewPly, setViewPly] = useState(null); // null = live position
   const [apiReady, setApiReady] = useState(false);
   const [evalBlack, setEvalBlack] = useState(0.5);
   const [busy, setBusy] = useState(false);
-  const [ft, setFt] = useState({ report: null, error: null, running: false });
+  const [err, setErr] = useState(null);
   const busyRef = useRef(false);
 
   // the server API is stateless — the client owns the game and sends it every call
@@ -53,13 +52,13 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame, canFinetune = t
 
   async function startGame(humanColor) {
     setBusy(true);
-    setFt({ report: null, error: null, running: false });
+    setErr(null);
     try {
       const st = await api("/new", { human_color: humanColor });
       loadGame(st);
       refreshEval(st.history_actions);
     } catch (e) {
-      setFt({ report: null, error: e.message, running: false });
+      setErr(e.message);
     } finally {
       setBusy(false);
     }
@@ -117,6 +116,7 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame, canFinetune = t
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
+    setErr(null);
     try {
       // 1. apply the human move only, so it lands on the board immediately
       let st = await api("/move", bodyFor(null, { action, bot_reply: false }));
@@ -130,17 +130,12 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame, canFinetune = t
         await refreshEval(st.history_actions);
       }
     } catch (e) {
-      setGame((g) => ({ ...g, _err: e.message }));
+      setErr(e.message);
     } finally {
       busyRef.current = false;
       setBusy(false);
     }
   }
-
-  const [savedGames, setSavedGames] = useState(0);
-  useEffect(() => {
-    if (game?.game_over) api("/games").then((d) => setSavedGames(d.count)).catch(() => {});
-  }, [game?.game_over, game?.ply]);
 
   // keep the eval bar in sync with the position being viewed (live or history)
   useEffect(() => {
@@ -152,27 +147,12 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame, canFinetune = t
       .catch(() => {});
   }, [viewPly, game?.ply, refreshEval]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function finetune(scope) {
-    setFt({ report: null, error: null, running: true });
-    try {
-      const report = scope === "all"
-        ? await api("/finetune_all", {})
-        : await api("/finetune", bodyFor(null, {
-            learn_color: scope === "whole" ? "both"
-              : game.human_color === "black" ? "white" : "black",
-          }));
-      setFt({ report, error: null, running: false });
-      onBotChanged?.();
-    } catch (e) {
-      setFt({ report: null, error: e.message, running: false });
-    }
-  }
-
   function newGame() {
     gameRef.current = null;
     try { localStorage.removeItem("othello.game"); } catch { /* */ }
     setGame(null);
     setViewPly(null);
+    setErr(null);
   }
 
   /* ---------- choose-colour screen ---------- */
@@ -192,7 +172,7 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame, canFinetune = t
               onClick={() => startGame("random")}>Random</button>
           </div>
           {!apiReady && <p className="hint">waiting for the bot API…</p>}
-          {ft.error && <p className="error">{ft.error}</p>}
+          {err && <p className="error">{err}</p>}
         </section>
       </main>
     );
@@ -211,7 +191,7 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame, canFinetune = t
 
   let status;
   if (!live) status = `Viewing move ${viewPly} of ${game.ply}.`;
-  else if (game._err) status = <span className="error">{game._err}</span>;
+  else if (err) status = <span className="error">{err}</span>;
   else if (game.game_over)
     status = game.winner === "draw"
       ? "Draw." : `${cap(game.winner)} wins ${game.score.black}–${game.score.white}.`;
@@ -272,35 +252,8 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame, canFinetune = t
               <button className="primary" onClick={() => onAnalyzeGame?.(game.history_actions)}>
                 Analyse this game
               </button>
-              {canFinetune && (
-                <>
-                  <button onClick={() => finetune()} disabled={ft.running}>
-                    {ft.running ? "Fine-tuning…" : "Learn the bot's moves"}
-                  </button>
-                  <button onClick={() => finetune("whole")} disabled={ft.running}>
-                    Learn the whole game
-                  </button>
-                  {savedGames > 1 && (
-                    <button onClick={() => finetune("all")} disabled={ft.running}>
-                      Learn from all {savedGames} saved games
-                    </button>
-                  )}
-                </>
-              )}
+              <button onClick={newGame}>New game</button>
             </div>
-            {canFinetune && (
-              <p className="hint">
-                <b>Saved to the dataset automatically</b> — {savedGames || "…"} game
-                {savedGames === 1 ? "" : "s"} in <code>data/games.jsonl</code>. Play more,
-                then <b>Learn from all N saved games</b> here or run
-                {" "}<code>scripts/finetune_from_games.py</code> offline to train on the
-                batch. A fine-tune reinforces good moves, penalises corner-losing blunders,
-                runs a short training pass, and keeps the update only if the bot doesn't get
-                weaker vs a random opponent. <b>Whole game</b> = both sides' moves;
-                {" "}<b>bot's moves</b> = just its own play.
-              </p>
-            )}
-            <FineTuneResult report={ft.report} error={ft.error} />
           </div>
         )}
       </section>

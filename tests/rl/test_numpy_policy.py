@@ -69,11 +69,8 @@ def test_othellobot_loads_from_npz(tmp_path):
     from othello_rl.webapp.moves import parse_game
     line = parse_game("c4c3d3")
     bot = OthelloBot.load(str(npz))
-    assert not bot.can_finetune
     b = Board.initial()
     assert 0 <= bot.select_action(b) < 64
     assert bot.best_move(b)["action"] in [r * 8 + c for r, c in b.legal_moves()]
     d = bot.analyse_line(line)
     assert len(d["plies"]) == len(line)
-    with pytest.raises(RuntimeError):
-        bot.finetune_from_game(line, "black")

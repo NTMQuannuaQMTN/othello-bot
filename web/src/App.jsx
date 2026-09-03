@@ -34,13 +34,6 @@ export default function App() {
     return () => clearInterval(id);
   }, [refreshBot]);
 
-  async function resetBot() {
-    if (!confirm("Reset the bot to its baseline weights? This discards all fine-tuning."))
-      return;
-    await api("/bot/reset", {});
-    refreshBot();
-  }
-
   return (
     <>
       <header>
@@ -61,33 +54,25 @@ export default function App() {
 
       {apiDown && (
         <div className="api-down">
-          Can't reach the bot API on <code>:8000</code>. Start it in another
-          terminal:&nbsp;
-          <code>python3 scripts/serve.py --config configs/webapp.yaml</code>
-          &nbsp;(or run <code>npm run dev:all</code> instead of <code>npm run dev</code>).
+          Can't reach the bot API. If you're running it yourself, start it with{" "}
+          <code>python3 scripts/serve.py</code>.
         </div>
       )}
 
       {tab === "play" ? (
-        <PlayPanel onBotChanged={refreshBot} onAnalyzeGame={analyzeGame}
-          canFinetune={bot?.features?.finetune ?? true} />
+        <PlayPanel onAnalyzeGame={analyzeGame} />
       ) : (
-        <AnalysisPanel loadLine={analyzeLine} onBotChanged={refreshBot}
-          canFinetune={bot?.features?.finetune ?? true} />
+        <AnalysisPanel loadLine={analyzeLine} />
       )}
 
       <footer>
         <span>
-          DQN bot ·{" "}
           <code>
             {bot
-              ? `${bot.network.channels}ch×${bot.network.blocks} · ${bot.params.toLocaleString()} params · ${bot.train_env_steps.toLocaleString()} training steps`
+              ? `${bot.network.channels}ch×${bot.network.blocks} DQN + search · ${bot.params.toLocaleString()} params`
               : "…"}
           </code>
         </span>
-        {(bot?.features?.finetune ?? true) && (
-          <button className="link" onClick={resetBot}>reset bot to baseline</button>
-        )}
       </footer>
     </>
   );

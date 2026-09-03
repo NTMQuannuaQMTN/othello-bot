@@ -1,29 +1,11 @@
-# Web app configuration (the Python JSON API).
+# Web app configuration (the Python JSON API — play + analysis, inference only).
 # The React front end lives in web/ — `cd web && npm run dev` (dev, proxies /api
 # here) or `npm run build` (this server then serves web/dist).
 host: 127.0.0.1
 port: 8000
 static_dir: web/dist        # served when built; falls back to an info page
 
-# The production model the site plays / analyses with. Leave `checkpoint` unset
-# to resolve it from checkpoints/registry.json (the active-model registry, which
-# scripts/promote_model.py maintains); set it here only to pin a specific file.
-# On first run the resolved checkpoint is copied into `state_dir/current.pt`;
-# subsequent runs resume that scratch state unless --fresh. In-app fine-tuning
-# only ever writes to `state_dir/` — never to models/ or checkpoints/production/.
+# The model the site plays / analyses with. Leave `checkpoint` unset to resolve
+# it from checkpoints/registry.json (the active-model registry that
+# scripts/promote_model.py maintains); set it to pin a specific file.
 # checkpoint: models/othello_bot_v1.pt
-state_dir: webapp_state
-games_path: data/games.jsonl    # durable, committed game dataset (append-only)
-
-finetune:
-  lr: 0.0001
-  grad_steps: 120
-  batch_size: 64
-  emphasis: 6              # how strongly the just-played game weighs vs anchor data
-  blunder_penalty: 0.8
-  great_bonus: 0.3
-  buffer_capacity: 30000
-  anchor_transitions: 2000 # bot-vs-baseline transitions kept to resist forgetting
-  guardrail_games: 60      # games vs Random before/after; roll back if it drops
-  guardrail_margin: 0.10
-  grade_lookahead: 4       # plies of negamax look-ahead when judging moves for training
