@@ -1,9 +1,9 @@
 """Vercel Python serverless entrypoint for the Othello bot API.
 
-Catch-all: Vercel routes every ``/api/*`` request to this function.  The bot is
-loaded once per warm container from ``api/policy.npz`` (numpy only — no PyTorch,
-which is what keeps this under the 250 MB function limit).  All API logic lives
-in ``othello_rl.webapp.server``; this file is just the HTTP glue.
+``vercel.json`` rewrites every ``/api/*`` request to this one function.  The bot
+is loaded once per warm container from ``api/policy.npz`` (numpy only — no
+PyTorch, which is what keeps this under the 250 MB function limit).  All API
+logic lives in ``othello_rl.webapp.server``; this file is just the HTTP glue.
 See ``docs/deploy.md``.
 """
 import json
@@ -25,15 +25,25 @@ _routes = build_routes(_app)
 
 
 def _api_path(raw: str, headers) -> str:
-    path = raw.split("?", 1)[0]
-    if path.startswith("/api/"):
-        return path
-    # defensive: some routing configs hand the function a stripped path
-    for h in ("x-vercel-original-pathname", "x-forwarded-uri", "x-original-uri"):
+    """The real ``/api/...`` path this request was for.
+
+    Depending on how Vercel applies the rewrite, ``self.path`` may already be the
+    original path, or a ``?__vpath=`` query we set in the rewrite destination, or
+    a bare ``/api/index``.  Try each, then a header, then give up gracefully."""
+    head, _, query = raw.partition("?")
+    if head.startswith("/api/") and head not in ("/api/index", "/api"):
+        return head
+    if query:
+        from urllib.parse import parse_qs
+        v = parse_qs(query).get("__vpath", [""])[0]
+        if v:
+            return v if v.startswith("/api/") else "/api/" + v.lstrip("/")
+    for h in ("x-vercel-original-pathname", "x-forwarded-uri", "x-original-uri",
+              "x-vercel-path"):
         v = headers.get(h)
         if v and v.split("?", 1)[0].startswith("/api/"):
             return v.split("?", 1)[0]
-    return "/api/" + path.lstrip("/")
+    return head if head.startswith("/api/") else "/api/" + head.lstrip("/")
 
 
 class handler(BaseHTTPRequestHandler):
