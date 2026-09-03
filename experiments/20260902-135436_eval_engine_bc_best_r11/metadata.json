@@ -1,0 +1,24 @@
+{
+  "created": "2026-09-02T13:54:36",
+  "git_commit": "ecaa242264e04dc5197ce8340ad87c49ce390e60",
+  "versions": {
+    "python": "3.9.6",
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "torch": "2.8.0",
+    "numpy": "2.0.2"
+  },
+  "argv": [
+    "scripts/eval_bot.py",
+    "--checkpoint",
+    "checkpoints/experiments/engine_bc_best_r11.pt",
+    "--vs-production",
+    "--games",
+    "80"
+  ],
+  "config": {
+    "agent": "engine_bc_best_r11",
+    "checkpoint": "checkpoints/experiments/engine_bc_best_r11.pt",
+    "games": 80,
+    "seed": 20260829
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "generated_utc": "2026-09-02T05:54:36+00:00",
+  "agent": "engine_bc_best_r11",
+  "num_games": 80,
+  "elo_extra_games": 40,
+  "seed": 20260829,
+  "panel": [
+    "random",
+    "greedy",
+    "heuristic",
+    "minimax:1",
+    "minimax:2",
+    "minimax:3",
+    "production"
+  ],
+  "vs": {
+    "random": {
+      "win_rate": 0.9,
+      "ci_low": 0.8148912101660255,
+      "ci_high": 0.9484530008223144,
+      "wins": 69,
+      "losses": 5,
+      "draws": 6,
+      "mean_disc_diff": 22.725
+    },
+    "greedy": {
+      "win_rate": 0.84375,
+      "ci_low": 0.7486977177686787,
+      "ci_high": 0.907301213549426,
+      "wins": 67,
+      "losses": 12,
+      "draws": 1,
+      "mean_disc_diff": 18.075
+    },
+    "heuristic": {
+      "win_rate": 0.4125,
+      "ci_low": 0.31105686511513087,
+      "ci_high": 0.5219615887311697,
+      "wins": 32,
+      "losses": 46,
+      "draws": 2,
+      "mean_disc_diff": -10.525
+    },
+    "minimax:1": {
+      "win_rate": 0.31875,
+      "ci_low": 0.22696159919874115,
+      "ci_high": 0.42714805519716725,
+      "wins": 24,
+      "losses": 53,
+      "draws": 3,
+      "mean_disc_diff": -11.8125
+    },
+    "minimax:2": {
+      "win_rate": 0.04375,
+      "ci_low": 0.016137821767903217,
+      "ci_high": 0.11317268757352156,
+      "wins": 3,
+      "losses": 76,
+      "draws": 1,
+      "mean_disc_diff": -30.35
+    },
+    "minimax:3": {
+      "win_rate": 0.0125,
+      "ci_low": 0.002209918618306224,
+      "ci_high": 0.06746432423965451,
+      "wins": 1,
+      "losses": 79,
+      "draws": 0,
+      "mean_disc_diff": -38.1875
+    },
+    "production": {
+      "win_rate": 0.46875,
+      "ci_low": 0.36335378771365845,
+      "ci_high": 0.5770099458028775,
+      "wins": 35,
+      "losses": 40,
+      "draws": 5,
+      "mean_disc_diff": -3.45
+    }
+  },
+  "elo_kind": "internal",
+  "internal_elo": {
+    "minimax:3": 2715.6035198133422,
+    "minimax:2": 2497.1149414726906,
+    "minimax:1": 2110.7987386875793,
+    "engine_bc_best_r11": 2033.5023361698356,
+    "heuristic": 2019.4588163078854,
+    "production": 1900.9682800054675,
+    "greedy": 1644.6159470879563,
+    "random": 1500.0
+  },
+  "agent_internal_elo": 2033.5023361698356
+}
