@@ -92,8 +92,8 @@ def test_appstate_does_not_touch_checkpoints(tmp_path):
     bot = __import__("othello_rl.webapp.bot_service", fromlist=["OthelloBot"]).OthelloBot(
         a, source_path=str(ckpt), state_dir=str(tmp_path / "scratch"))
     app = AppState(bot, games_path=str(tmp_path / "data" / "games.jsonl"))
-    app.session.new_game("black")
-    app.session.human_move(app.session.state()["legal_actions"][0])
+    s = app.session_from({"human_color": "black"})
+    s.human_move(s.state()["legal_actions"][0])
     (tmp_path / "web_dist").mkdir()
     (tmp_path / "web_dist" / "index.html").write_text("<!doctype html>")  # "rebuild"
 

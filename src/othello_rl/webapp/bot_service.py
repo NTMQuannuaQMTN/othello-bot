@@ -22,7 +22,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
-import torch
 
 from othello_rl.agents import GreedyAgent, RandomAgent
 from othello_rl.agents.heuristic_agent import DEFAULT_WEIGHTS as _HW, evaluate as _heval
@@ -40,8 +39,35 @@ from othello_rl.environment.environment import (
     encode_observation,
     legal_action_mask,
 )
-from othello_rl.rl.agent import DQNAgent, NetworkConfig
+from othello_rl.rl.numpy_policy import NumpyPolicy
 from othello_rl.rl.replay_buffer import ReplayBuffer
+
+#: fine-tuning (and the DQN checkpoint format) needs PyTorch; the deploy build
+#: serves with :class:`NumpyPolicy` and never imports it.  ``_require_torch``
+#: raises a clean error if a training-only path is hit without it.
+try:  # pragma: no cover - trivial
+    import torch as _torch  # noqa: F401
+    _HAS_TORCH = True
+except Exception:  # pragma: no cover
+    _HAS_TORCH = False
+
+
+def _require_torch(what: str):
+    if not _HAS_TORCH:
+        raise RuntimeError(f"{what} needs the full install (PyTorch); "
+                           "this deployment serves inference only.")
+    import torch
+    return torch
+
+
+def _load_agent(checkpoint: str):
+    """A :class:`NumpyPolicy` for an exported ``.npz`` / model dir (torch-free),
+    else a :class:`DQNAgent` from a ``.pt`` checkpoint."""
+    p = Path(checkpoint)
+    if p.suffix == ".npz" or (p.is_dir() and (p / "policy.npz").is_file()):
+        return NumpyPolicy.load(p)
+    from othello_rl.rl.agent import DQNAgent
+    return DQNAgent.from_checkpoint(checkpoint)
 
 # --------------------------------------------------------------------------- #
 # Move-quality classification — chess.com "Expected Points" model
@@ -190,11 +216,13 @@ class FineTuneConfig:
 class OthelloBot:
     """Thread-safe bot: move selection, analysis, and self-fine-tuning."""
 
-    def __init__(self, agent: DQNAgent, *, source_path: Optional[str] = None,
+    def __init__(self, agent, *, source_path: Optional[str] = None,
                  state_dir: Optional[str] = None, ft_config: Optional[FineTuneConfig] = None,
                  seed: int = 0):
         self.agent = agent
-        self.agent.net.eval()
+        if hasattr(agent, "net"):
+            agent.net.eval()
+        self.can_finetune = _HAS_TORCH and hasattr(agent, "net")
         self.source_path = source_path
         self.ft = ft_config or FineTuneConfig()
         self._lock = threading.RLock()
@@ -224,25 +252,29 @@ class OthelloBot:
         if self.state_dir:
             (self.state_dir / "history").mkdir(parents=True, exist_ok=True)
 
-    def _load_baseline_state(self, agent: DQNAgent):
+    def _load_baseline_state(self, agent):
         """The weights `reset_to_baseline` restores. Prefer the base checkpoint
         (`source_path`) so a restart after a kept fine-tune still resets to the
-        real baseline, not the fine-tuned net."""
+        real baseline, not the fine-tuned net.  ``None`` for a torch-free
+        (:class:`NumpyPolicy`) agent — it cannot be fine-tuned anyway."""
+        self._baseline_is_true = False
+        if not hasattr(agent, "net"):
+            return None
         src = self.source_path
-        if src and Path(src).is_file():
+        if src and Path(src).is_file() and Path(src).suffix != ".npz":
             try:
+                from othello_rl.rl.agent import DQNAgent
                 base = DQNAgent.from_checkpoint(src, device=str(agent.device))
                 self._baseline_is_true = True
                 return copy.deepcopy(base.net.state_dict())
             except Exception:  # pragma: no cover - corrupt/mismatched base
                 pass
-        self._baseline_is_true = False
         return copy.deepcopy(agent.net.state_dict())
 
     # -- construction ------------------------------------------------------
     @classmethod
     def load(cls, checkpoint: str, **kw) -> "OthelloBot":
-        agent = DQNAgent.from_checkpoint(checkpoint)
+        agent = _load_agent(checkpoint)
         agent.name = "othello-bot"
         kw.setdefault("source_path", str(checkpoint))
         return cls(agent, **kw)
@@ -991,6 +1023,9 @@ class OthelloBot:
     def _run_finetune(self, trans, grades, n_reinf, n_pen, progress=None) -> FineTuneReport:
         """Push ``trans`` into the anchored buffer, train, and keep the update
         only if it doesn't weaken the bot vs Random (paired, same seed)."""
+        if not self.can_finetune:
+            raise RuntimeError("fine-tuning needs the full install (PyTorch); "
+                               "this deployment serves inference only.")
         cfg = self.ft
         buf = self._ensure_buffer()
         for _ in range(cfg.emphasis):
@@ -1064,6 +1099,7 @@ class OthelloBot:
             return self._run_finetune(all_trans, all_grades, n_reinf, n_pen)
 
     def _train(self, cfg: FineTuneConfig, progress=None) -> Tuple[float, float]:
+        torch = _require_torch("fine-tuning")
         import torch.nn.functional as F
         from othello_rl.rl.network import masked_q
 
@@ -1127,6 +1163,8 @@ class OthelloBot:
         (self.state_dir / "info.json").write_text(json.dumps(self.info(), indent=2))
 
     def reset_to_baseline(self) -> None:
+        if not self.can_finetune:
+            raise RuntimeError("no fine-tune state to reset on this deployment.")
         with self._lock:
             self.agent.net.load_state_dict(self._baseline_state)
             self.agent.net.eval()
@@ -1143,7 +1181,11 @@ class OthelloBot:
 
     def info(self) -> dict:
         nc = self.agent.net_config
-        n_params = sum(p.numel() for p in self.agent.net.parameters())
+        g = nc.get if isinstance(nc, dict) else (lambda k, d=None: getattr(nc, k, d))
+        if hasattr(self.agent, "net"):
+            n_params = int(sum(p.numel() for p in self.agent.net.parameters()))
+        else:
+            n_params = int(getattr(self.agent, "param_count", 0))
         return {
             "name": self.agent.name,
             "version": self.version,
@@ -1151,9 +1193,10 @@ class OthelloBot:
             "games_finetuned": self.games_finetuned,
             "source": self.source_path,
             "baseline": "base-checkpoint" if self._baseline_is_true else "loaded-state",
-            "params": int(n_params),
-            "network": {"channels": nc.channels, "blocks": nc.blocks, "hidden": nc.hidden},
+            "params": n_params,
+            "network": {"channels": g("channels"), "blocks": g("blocks"), "hidden": g("hidden")},
             "train_env_steps": int(self.agent.meta.env_steps),
+            "can_finetune": self.can_finetune,
         }
 
 

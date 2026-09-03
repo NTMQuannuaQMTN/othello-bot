@@ -1,0 +1,27 @@
+# Keep the Vercel deploy small and torch-free.
+# The Python function needs: api/, src/othello_rl/ (via vercel.json includeFiles).
+# The web build needs: web/ (minus its node_modules).
+
+# root requirements.txt pins torch (~1 GB) — the function uses api/requirements.txt
+/requirements.txt
+/requirements-dev.txt
+/pyproject.toml
+
+# training / research / data — never needed at runtime
+/checkpoints
+/data
+/results
+/experiments
+/scripts
+/tests
+/docs
+/notebooks
+/Egaroucid-console_v7.8.1
+/Egaroucid-console*
+*.pt
+*.ipynb
+
+web/node_modules
+web/dist
+node_modules
+.git

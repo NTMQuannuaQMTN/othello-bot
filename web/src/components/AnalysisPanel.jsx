@@ -8,7 +8,7 @@ import { api, sanToIdx } from "../api.js";
 const SUMMARY_ORDER = ["Blunder", "Mistake", "Inaccuracy", "Good", "Excellent", "Best"];
 const EMPTY = { positions: [startPosition()], plies: [], eval_graph: [{ ply: -1, eval_black: 0.5 }], summary: { black: {}, white: {} } };
 
-export default function AnalysisPanel({ loadLine, onBotChanged }) {
+export default function AnalysisPanel({ loadLine, onBotChanged, canFinetune = true }) {
   const [line, setLine] = useState([]);
   const [cursor, setCursor] = useState(0);
   const [data, setData] = useState(EMPTY);
@@ -227,7 +227,7 @@ export default function AnalysisPanel({ loadLine, onBotChanged }) {
           })}
         </div>
 
-        {line.length > 3 && (
+        {canFinetune && line.length > 3 && (
           <div className="learn-from">
             <span className="alt">Teach the bot this game:</span>
             <button disabled={!!ft.running} onClick={saveGame}>

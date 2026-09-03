@@ -23,6 +23,21 @@ class GameSession:
         self.level = 0
         self.last_bot_moves: List[int] = []
 
+    @classmethod
+    def from_history(cls, bot: "OthelloBot", human_color: str = "black",
+                     history_actions=()) -> "GameSession":
+        """Rebuild a session by replaying ``history_actions`` — the API is
+        stateless, so every Play request carries its own history."""
+        s = cls(bot)
+        hc = str(human_color).lower()
+        s.human_color = WHITE if hc.startswith("w") else BLACK
+        for a in history_actions:
+            a = int(a)
+            mv = None if (a == PASS_ACTION or not s.board.legal_moves()) else action_to_rc(a)
+            s.board = s.board.apply(mv)
+            s.history.append(a)
+        return s
+
     # -- lifecycle ----------------------------------------------------
     def new_game(self, human_color: str = "black", level: int = 0) -> dict:
         import random

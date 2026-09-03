@@ -63,20 +63,43 @@ def _call(base, path, body=None):
         return json.loads(r.read())
 
 
+class _Client:
+    """The API is stateless — the client carries its own move history."""
+
+    def __init__(self, base, human_color="black"):
+        self.base, self.hc, self.hist = base, human_color, []
+
+    def _track(self, st):
+        self.hist = list(st["history_actions"])
+        return st
+
+    def new(self):
+        return self._track(_call(self.base, "/api/new", {"human_color": self.hc}))
+
+    def move(self, action, bot_reply=True):
+        return self._track(_call(self.base, "/api/move", {
+            "human_color": self.hc, "history_actions": self.hist,
+            "action": action, "bot_reply": bot_reply}))
+
+    def bot_move(self):
+        return self._track(_call(self.base, "/api/bot_move", {
+            "human_color": self.hc, "history_actions": self.hist}))
+
+
 def test_move_bot_reply_false_defers_the_bot(server):
-    st = _call(server, "/api/new", {"human_color": "black"})
-    after = _call(server, "/api/move", {"action": st["legal_actions"][0], "bot_reply": False})
+    c = _Client(server, "black")
+    st = c.new()
+    after = c.move(st["legal_actions"][0], bot_reply=False)
     assert after["ply"] == 1                 # only the human move applied
     assert after["turn"] == "white" and not after["your_turn"]
     assert after["last_bot_moves"] == []
-    st2 = _call(server, "/api/bot_move", {})  # the client then triggers the reply
+    st2 = c.bot_move()                       # the client then triggers the reply
     assert st2["ply"] == 2 and st2["your_turn"]
     assert len(st2["last_bot_moves"]) == 1
 
 
 def test_bot_move_tolerates_a_get(server):
-    _call(server, "/api/new", {"human_color": "white"})   # bot (black) already moved once
-    with urllib.request.urlopen(server + "/api/bot_move") as r:  # GET, no body
+    with urllib.request.urlopen(server + "/api/bot_move") as r:  # GET, no body/history
         assert r.status == 200
         assert "grid" in json.loads(r.read())
 
@@ -95,11 +118,12 @@ def test_games_are_recorded_and_finetune_all(tmp_path):
         import random
         assert _call(base, "/api/games")["count"] == 0
         for g in range(2):
-            st = _call(base, "/api/new", {"human_color": "black" if g == 0 else "white"})
+            c = _Client(base, "black" if g == 0 else "white")
+            st = c.new()
             rng = random.Random(g)
             while not st["game_over"]:
-                st = (_call(base, "/api/move", {"action": rng.choice(st["legal_actions"])})
-                      if st["your_turn"] else _call(base, "/api/bot_move", {}))
+                st = (c.move(rng.choice(st["legal_actions"]))
+                      if st["your_turn"] else c.bot_move())
         games = _call(base, "/api/games")
         assert games["count"] == 2
         recs = [json.loads(l) for l in (tmp_path / "games.jsonl").read_text().splitlines()]
@@ -153,17 +177,15 @@ def test_play_and_analyse_flow(server):
     info = _call(server, "/api/bot")
     assert info["version"] == 0 and info["params"] > 0
 
-    st = _call(server, "/api/new", {"human_color": "black"})
+    c = _Client(server, "black")
+    st = c.new()
     assert st["your_turn"] and len(st["legal_actions"]) == 4
     assert st["moves"] == []  # no moves yet
 
     import random
     rng = random.Random(3)
     while not st["game_over"]:
-        if st["your_turn"]:
-            st = _call(server, "/api/move", {"action": rng.choice(st["legal_actions"])})
-        else:
-            st = _call(server, "/api/bot_move")
+        st = c.move(rng.choice(st["legal_actions"])) if st["your_turn"] else c.bot_move()
     assert st["winner"] in ("black", "white", "draw")
 
     # per-move log: numbered, correct side (accounts for passes), who played it
@@ -214,13 +236,14 @@ def test_illegal_move_returns_400(server):
 
 
 def test_finetune_endpoint(server):
-    st = _call(server, "/api/new", {"human_color": "white"})
+    c = _Client(server, "white")
+    st = c.new()
     import random
     rng = random.Random(5)
     while not st["game_over"]:
-        st = (_call(server, "/api/move", {"action": rng.choice(st["legal_actions"])})
-              if st["your_turn"] else _call(server, "/api/bot_move"))
-    rep = _call(server, "/api/finetune", {})
+        st = c.move(rng.choice(st["legal_actions"])) if st["your_turn"] else c.bot_move()
+    rep = _call(server, "/api/finetune",
+                {"history_actions": st["history_actions"], "learn_color": "black"})
     assert "grades" in rep and "loss_after" in rep
     assert isinstance(rep["rolled_back"], bool)
 

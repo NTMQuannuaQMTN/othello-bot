@@ -10,7 +10,7 @@ const INITIAL_GRID = (() => {
   return g;
 })();
 
-export default function PlayPanel({ onBotChanged, onAnalyzeGame }) {
+export default function PlayPanel({ onBotChanged, onAnalyzeGame, canFinetune = true }) {
   const [game, setGame] = useState(null);      // null until a game is started
   const [viewPly, setViewPly] = useState(null); // null = live position
   const [apiReady, setApiReady] = useState(false);
@@ -240,28 +240,34 @@ export default function PlayPanel({ onBotChanged, onAnalyzeGame }) {
               <button className="primary" onClick={() => onAnalyzeGame?.(game.history_actions)}>
                 Analyse this game
               </button>
-              <button onClick={() => finetune()} disabled={ft.running}>
-                {ft.running ? "Fine-tuning…" : "Learn the bot's moves"}
-              </button>
-              <button onClick={() => finetune("whole")} disabled={ft.running}>
-                Learn the whole game
-              </button>
-              {savedGames > 1 && (
-                <button onClick={() => finetune("all")} disabled={ft.running}>
-                  Learn from all {savedGames} saved games
-                </button>
+              {canFinetune && (
+                <>
+                  <button onClick={() => finetune()} disabled={ft.running}>
+                    {ft.running ? "Fine-tuning…" : "Learn the bot's moves"}
+                  </button>
+                  <button onClick={() => finetune("whole")} disabled={ft.running}>
+                    Learn the whole game
+                  </button>
+                  {savedGames > 1 && (
+                    <button onClick={() => finetune("all")} disabled={ft.running}>
+                      Learn from all {savedGames} saved games
+                    </button>
+                  )}
+                </>
               )}
             </div>
-            <p className="hint">
-              <b>Saved to the dataset automatically</b> — {savedGames || "…"} game
-              {savedGames === 1 ? "" : "s"} in <code>data/games.jsonl</code>. Play more,
-              then <b>Learn from all N saved games</b> here or run
-              {" "}<code>scripts/finetune_from_games.py</code> offline to train on the
-              batch. A fine-tune reinforces good moves, penalises corner-losing blunders,
-              runs a short training pass, and keeps the update only if the bot doesn't get
-              weaker vs a random opponent. <b>Whole game</b> = both sides' moves;
-              {" "}<b>bot's moves</b> = just its own play.
-            </p>
+            {canFinetune && (
+              <p className="hint">
+                <b>Saved to the dataset automatically</b> — {savedGames || "…"} game
+                {savedGames === 1 ? "" : "s"} in <code>data/games.jsonl</code>. Play more,
+                then <b>Learn from all N saved games</b> here or run
+                {" "}<code>scripts/finetune_from_games.py</code> offline to train on the
+                batch. A fine-tune reinforces good moves, penalises corner-losing blunders,
+                runs a short training pass, and keeps the update only if the bot doesn't get
+                weaker vs a random opponent. <b>Whole game</b> = both sides' moves;
+                {" "}<b>bot's moves</b> = just its own play.
+              </p>
+            )}
             <FineTuneResult report={ft.report} error={ft.error} />
           </div>
         )}

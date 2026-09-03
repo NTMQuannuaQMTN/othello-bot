@@ -38,8 +38,28 @@ def main(argv=None) -> int:
     ap.add_argument("--host", default=None)
     ap.add_argument("--fresh", action="store_true",
                     help="ignore any fine-tuned state and start from the base checkpoint")
+    ap.add_argument("--policy", default=None,
+                    help="serve the torch-free exported policy (api/policy.npz) — "
+                         "inference only, mirrors the Vercel deploy")
     args = ap.parse_args(argv)
     seed_everything(0)
+
+    if args.policy:
+        _root = Path(__file__).resolve().parents[1]
+        npz = Path(args.policy)
+        npz = npz if npz.is_absolute() else _root / npz
+        bot = OthelloBot.load(str(npz))
+        cfg = load_config(str(_root / args.config)) if (_root / args.config).is_file() else {}
+        static_dir = _root / cfg.get("static_dir", "web/dist")
+        httpd = serve(bot, host=args.host or "127.0.0.1", port=args.port or 8000,
+                      static_dir=static_dir, games_path=None)
+        h, p = httpd.server_address
+        print(f"serving torch-free policy {npz.name} (inference only) on http://{h}:{p}")
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        return 0
 
     _root = Path(__file__).resolve().parents[1]
 

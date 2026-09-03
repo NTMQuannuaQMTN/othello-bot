@@ -69,9 +69,11 @@ export default function App() {
       )}
 
       {tab === "play" ? (
-        <PlayPanel onBotChanged={refreshBot} onAnalyzeGame={analyzeGame} />
+        <PlayPanel onBotChanged={refreshBot} onAnalyzeGame={analyzeGame}
+          canFinetune={bot?.features?.finetune ?? true} />
       ) : (
-        <AnalysisPanel loadLine={analyzeLine} onBotChanged={refreshBot} />
+        <AnalysisPanel loadLine={analyzeLine} onBotChanged={refreshBot}
+          canFinetune={bot?.features?.finetune ?? true} />
       )}
 
       <footer>
@@ -83,7 +85,9 @@ export default function App() {
               : "…"}
           </code>
         </span>
-        <button className="link" onClick={resetBot}>reset bot to baseline</button>
+        {(bot?.features?.finetune ?? true) && (
+          <button className="link" onClick={resetBot}>reset bot to baseline</button>
+        )}
       </footer>
     </>
   );

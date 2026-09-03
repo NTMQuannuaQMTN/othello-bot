@@ -1,29 +1,41 @@
-"""Reinforcement-learning components: network, replay, DQN agent, trainer."""
-from .network import SmallOthelloNet, greedy_action, masked_q
-from .replay_buffer import Batch, ReplayBuffer
-from .agent import AgentMeta, DQNAgent, NetworkConfig
-from .opponents import FixedOpponentEnv
-from .trainer import DQNConfig, DQNTrainer, TrainMetrics
-from .curriculum import CurriculumConfig, Stage, run_curriculum
-from .self_play import OpponentPool, SelfPlayConfig, run_self_play
+"""Reinforcement-learning components: network, replay, DQN agent, trainer.
 
-__all__ = [
-    "SmallOthelloNet",
-    "masked_q",
-    "greedy_action",
-    "ReplayBuffer",
-    "Batch",
-    "DQNAgent",
-    "NetworkConfig",
-    "AgentMeta",
-    "FixedOpponentEnv",
-    "DQNTrainer",
-    "DQNConfig",
-    "TrainMetrics",
-    "run_curriculum",
-    "CurriculumConfig",
-    "Stage",
-    "OpponentPool",
-    "SelfPlayConfig",
-    "run_self_play",
-]
+Submodules are imported **lazily** (PEP 562) so a torch-free consumer — the web
+deploy loads :mod:`othello_rl.rl.numpy_policy` and :mod:`othello_rl.rl.replay_buffer`
+only — never pays for ``import torch`` via this package's ``__init__``.
+"""
+from importlib import import_module
+
+_EXPORTS = {
+    "SmallOthelloNet": "network",
+    "greedy_action": "network",
+    "masked_q": "network",
+    "ReplayBuffer": "replay_buffer",
+    "Batch": "replay_buffer",
+    "DQNAgent": "agent",
+    "NetworkConfig": "agent",
+    "AgentMeta": "agent",
+    "FixedOpponentEnv": "opponents",
+    "DQNTrainer": "trainer",
+    "DQNConfig": "trainer",
+    "TrainMetrics": "trainer",
+    "run_curriculum": "curriculum",
+    "CurriculumConfig": "curriculum",
+    "Stage": "curriculum",
+    "OpponentPool": "self_play",
+    "SelfPlayConfig": "self_play",
+    "run_self_play": "self_play",
+}
+
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name: str):
+    mod = _EXPORTS.get(name)
+    if mod is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return getattr(import_module(f"{__name__}.{mod}"), name)
+
+
+def __dir__():
+    return sorted(list(globals()) + __all__)

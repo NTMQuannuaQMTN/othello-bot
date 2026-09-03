@@ -1,3 +1,7 @@
+// Same-origin by default (Vercel routes /api/* to the Python function).
+// Set VITE_API_BASE at build time to point at a separately-hosted API.
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
+
 export async function api(path, body) {
   const opts =
     body === undefined
@@ -7,7 +11,7 @@ export async function api(path, body) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         };
-  const res = await fetch("/api" + path, opts);
+  const res = await fetch(API_BASE + "/api" + path, opts);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
