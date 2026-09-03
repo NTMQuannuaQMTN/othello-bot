@@ -1,7 +1,7 @@
 # Deploying the web app (Vercel)
 
 **One Vercel project.** It builds the Vite front end (static) and serves
-`web/api/index.py` as a Python serverless function on the **same origin**, so the
+`api/index.py` as a Python serverless function on the **same origin**, so the
 front end calls `/api/*` with no env vars and no CORS. Inference only — no
 PyTorch, no training (that's offline, `scripts/train_*.py`).
 
@@ -19,36 +19,38 @@ In the Vercel project → **Settings → Build and Deployment**:
 
 | setting | value |
 |---|---|
-| **Root Directory** | **`web`** |
-| Framework Preset | Vite (auto-detected) |
-| Build / Output / Install Command | leave as auto (or from `web/vercel.json`) |
+| **Root Directory** | **empty / `./`** (the repo root — *not* `web`, *not* `api`) |
+| Framework Preset | Other |
+| Build / Output / Install Command | leave "Override" off — they come from `vercel.json` |
 
 Then **Deployments → Redeploy**. Every push to `main` deploys after that.
 
-Do **not** run a separate "api" project — one project serves both.
+Use **one** Vercel project — it serves the front end and the `/api/*` function
+on the same domain. Delete any separate "api" project.
 
-## What's under `web/`
+## Repo layout for the deploy
 
 | path | role |
 |---|---|
-| `web/vercel.json` | function limits + `/api/*` and SPA rewrites |
-| `web/api/index.py` | the function — loads the bot once, delegates to `othello_rl.webapp.server.dispatch` |
-| `web/api/policy.npz` | exported weights (committed, ~1.5 MB) |
-| `web/api/othello_rl/` | the package, **vendored + committed** (~300 KB) so the function bundle is self-contained |
-| `web/api/requirements.txt` | `numpy` |
-| `.vercelignore` (repo root) | keeps torch / checkpoints / data / `pyproject.toml` out of the upload |
+| `vercel.json` | build command, output dir, function limits, `/api/*` + SPA rewrites |
+| `package.json` | `vercel-build` → installs & builds `web/` into `web/dist` |
+| `api/index.py` | the function — loads the bot once, delegates to `othello_rl.webapp.server.dispatch` |
+| `api/policy.npz` | exported weights (committed, ~1.5 MB) |
+| `api/othello_rl/` | the package, **vendored + committed** (~300 KB) so the function bundle is self-contained |
+| `api/requirements.txt` | `numpy` |
+| `.vercelignore` | keeps torch / checkpoints / data / `pyproject.toml` out of the upload |
 
 ## When the model changes
 
 ```bash
-python3 scripts/export_policy.py     # -> web/api/policy.npz + re-vendors web/api/othello_rl
-git add web/api/policy.npz web/api/othello_rl && git commit -m "web: refresh model"
+python3 scripts/export_policy.py     # -> api/policy.npz + re-vendors api/othello_rl
+git add api/policy.npz api/othello_rl && git commit -m "web: refresh model"
 ```
 
 ## Run the deploy build locally
 
 ```bash
-python3 scripts/serve.py --policy web/api/policy.npz   # torch-free, mirrors Vercel
+python3 scripts/serve.py --policy api/policy.npz   # torch-free, mirrors Vercel
 cd web && npm run build                                # then reload http://127.0.0.1:8000
 ```
 
